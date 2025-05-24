@@ -67,6 +67,119 @@ class DataManager:
 
         self.conn.commit()
 
+    def save_organization_profile(self, name, mission, projects, needs, target_demographics):
+        """
+        Saves the organization profile. Deletes any existing profile and inserts the new one.
+        """
+        try:
+            self.cursor.execute("DELETE FROM organization_profile")
+            self.cursor.execute('''
+                INSERT INTO organization_profile (name, mission, projects, needs, target_demographics)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (name, mission, projects, needs, target_demographics))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error in save_organization_profile: {e}")
+            # Optionally, re-raise the exception or handle it as appropriate
+            # raise
+
+    def get_organization_profile(self):
+        """
+        Retrieves the organization profile from the database.
+        Returns a dictionary representing the profile, or None if not found.
+        """
+        try:
+            self.cursor.execute("SELECT id, name, mission, projects, needs, target_demographics FROM organization_profile LIMIT 1")
+            row = self.cursor.fetchone()
+            if row:
+                # Get column names from cursor.description
+                column_names = [description[0] for description in self.cursor.description]
+                # Create a dictionary
+                profile_dict = dict(zip(column_names, row))
+                return profile_dict
+            else:
+                return None
+        except sqlite3.Error as e:
+            print(f"Database error in get_organization_profile: {e}")
+            # Optionally, re-raise the exception or handle it as appropriate
+            # raise
+            return None
+
+    def save_grant_opportunity(self, grant_title, funder, deadline, description, eligibility, focus_areas, raw_research_data='', analysis_notes='', suitability_score=None):
+        """
+        Saves a new grant opportunity to the database.
+        Returns the ID of the newly inserted row.
+        """
+        try:
+            self.cursor.execute('''
+                INSERT INTO grant_opportunities (grant_title, funder, deadline, description, eligibility, focus_areas, raw_research_data, analysis_notes, suitability_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (grant_title, funder, deadline, description, eligibility, focus_areas, raw_research_data, analysis_notes, suitability_score))
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f"Database error in save_grant_opportunity: {e}")
+            # raise
+            return None
+
+    def update_grant_analysis(self, grant_id, analysis_notes, suitability_score, status):
+        """
+        Updates the analysis fields for a specific grant opportunity.
+        """
+        try:
+            self.cursor.execute('''
+                UPDATE grant_opportunities
+                SET analysis_notes = ?, suitability_score = ?, status = ?
+                WHERE id = ?
+            ''', (analysis_notes, suitability_score, status, grant_id))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            print(f"Database error in update_grant_analysis: {e}")
+            # raise
+
+    def get_grant_opportunity(self, grant_id):
+        """
+        Retrieves a specific grant opportunity by its ID.
+        Returns a dictionary or None.
+        """
+        try:
+            self.cursor.execute("SELECT * FROM grant_opportunities WHERE id = ?", (grant_id,))
+            row = self.cursor.fetchone()
+            if row:
+                column_names = [description[0] for description in self.cursor.description]
+                return dict(zip(column_names, row))
+            else:
+                return None
+        except sqlite3.Error as e:
+            print(f"Database error in get_grant_opportunity: {e}")
+            # raise
+            return None
+
+    def get_all_grant_opportunities(self, status_filter=None):
+        """
+        Retrieves all grant opportunities, optionally filtered by status.
+        Returns a list of dictionaries.
+        """
+        try:
+            query = "SELECT * FROM grant_opportunities"
+            params = []
+            if status_filter:
+                query += " WHERE status = ?"
+                params.append(status_filter)
+            
+            self.cursor.execute(query, params)
+            rows = self.cursor.fetchall()
+            opportunities = []
+            if rows:
+                column_names = [description[0] for description in self.cursor.description]
+                for row in rows:
+                    opportunities.append(dict(zip(column_names, row)))
+            return opportunities
+        except sqlite3.Error as e:
+            print(f"Database error in get_all_grant_opportunities: {e}")
+            # raise
+            return []
+
     def close_connection(self):
         """
         Closes the database connection.
