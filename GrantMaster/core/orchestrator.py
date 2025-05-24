@@ -22,6 +22,26 @@ class Orchestrator:
         self.openai_client = OpenAI(api_key=api_key)
         print("Orchestrator and OpenAI client initialized successfully.")
 
+    def register_researcher(self, researcher_agent):
+        """Registers the researcher agent."""
+        self.research_agent = researcher_agent
+        print(f"Researcher agent {type(researcher_agent).__name__} registered.")
+
+    def register_analyst(self, analyst_agent):
+        """Registers the analyst agent."""
+        self.analysis_agent = analyst_agent
+        print(f"Analyst agent {type(analyst_agent).__name__} registered.")
+
+    def register_writer(self, writer_agent):
+        """Registers the writer agent."""
+        self.writing_agent = writer_agent
+        print(f"Writer agent {type(writer_agent).__name__} registered.")
+
+    def register_editor(self, editor_agent):
+        """Registers the editor agent (as review_agent)."""
+        self.review_agent = editor_agent
+        print(f"Editor agent {type(editor_agent).__name__} registered as review_agent.")
+
     def start_grant_application_flow(self, organization_profile, grant_opportunity):
         # Placeholder for workflow logic
         print(f"Starting grant application flow for grant ID: {grant_opportunity.get('id')} - {grant_opportunity.get('grant_title')}")
@@ -33,7 +53,28 @@ class Orchestrator:
 if __name__ == '__main__':
     # This block is for example usage and basic testing of the Orchestrator.
     # It uses a dedicated test database to avoid conflicts with main/development data.
-    
+
+    # 1. Define Dummy Agent Classes
+    class DummyResearchAgent:
+        def __init__(self, name="Researcher"):
+            self.name = name
+            print(f"Dummy {self.name} initialized.")
+
+    class DummyAnalysisAgent:
+        def __init__(self, name="Analyst"):
+            self.name = name
+            print(f"Dummy {self.name} initialized.")
+
+    class DummyWritingAgent:
+        def __init__(self, name="Writer"):
+            self.name = name
+            print(f"Dummy {self.name} initialized.")
+
+    class DummyReviewAgent: # For the 'editor' role
+        def __init__(self, name="Editor/Reviewer"):
+            self.name = name
+            print(f"Dummy {self.name} initialized.")
+
     db_name_for_test = 'test_orchestrator_main.db'
     dm_setup = None  # Initialize to None for cleanup in finally block
 
@@ -44,6 +85,21 @@ if __name__ == '__main__':
         print(f"Initializing Orchestrator with its DataManager pointed to '{db_name_for_test}'...")
         # Note: OPENAI_API_KEY must be set in .env or environment for Orchestrator to init successfully.
         orchestrator = Orchestrator(db_name=db_name_for_test)
+
+        # 2. Instantiate and Register Dummy Agents
+        print("\nRegistering dummy agents...")
+        researcher = DummyResearchAgent()
+        orchestrator.register_researcher(researcher)
+
+        analyst = DummyAnalysisAgent()
+        orchestrator.register_analyst(analyst)
+
+        writer = DummyWritingAgent()
+        orchestrator.register_writer(writer)
+
+        editor = DummyReviewAgent() # Corresponds to self.review_agent
+        orchestrator.register_editor(editor)
+        print("Dummy agents registered.\n")
 
         # Populate with dummy data for testing the flow using dm_setup
         print("Saving dummy organization profile using dm_setup...")
