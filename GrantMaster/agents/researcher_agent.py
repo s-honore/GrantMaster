@@ -318,6 +318,63 @@ def node_perform_login(state: GrantMasterState) -> dict:
             "log_messages": log_messages,
         }
 
+# Make sure WebSleuthAgent class definition is available above this function.
+# GrantMasterState should already be imported from ..core.graph_state
+
+def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) -> dict:
+    """
+    LangGraph node to perform research and extraction using WebSleuthAgent.
+    Updates state with extracted grant opportunities or an error message.
+    The 'agent' parameter (WebSleuthAgent instance) will be partially applied
+    when this node is added to the graph.
+    """
+    print("Attempting node_research_and_extract...")
+    authenticated_driver = state.get("authenticated_driver_session")
+    # Use a default research task if not provided in the state
+    research_task_description = state.get('current_research_task_description', 'Find relevant grant opportunities')
+    
+    log_messages = list(state.get("log_messages", []))
+
+    if not authenticated_driver:
+        error_message = "Cannot research, not logged in."
+        print(error_message)
+        log_messages.append("Research skipped: Not logged in.")
+        return {
+            "error_message": error_message,
+            "extracted_grant_opportunities": [], # Ensure this key is present
+            "log_messages": log_messages,
+        }
+
+    try:
+        print(f"Calling WebSleuthAgent.research_and_extract with task: '{research_task_description}'")
+        # Assuming 'agent' is an instance of WebSleuthAgent passed in
+        results_list = agent.research_and_extract(authenticated_driver, research_task_description)
+        
+        # research_and_extract returns [] on error or if nothing found.
+        # Per plan, we don't set state['error_message'] based on empty results_list here,
+        # as that would require research_and_extract to signal errors more explicitly.
+        # The internal logs of research_and_extract will indicate if an error occurred.
+        
+        success_message = f"Research complete: Found {len(results_list)} potential opportunities."
+        print(success_message)
+        log_messages.append(success_message)
+        
+        return {
+            "extracted_grant_opportunities": results_list,
+            "log_messages": log_messages,
+            "error_message": None, # Explicitly set to None on successful execution path
+        }
+    except Exception as e:
+        # This handles unexpected errors within the node function itself
+        error_message = f"An unexpected error occurred in node_research_and_extract: {str(e)}"
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "extracted_grant_opportunities": [],
+            "log_messages": log_messages,
+            "error_message": error_message,
+        }
+
 if __name__ == '__main__':
     # Example Usage (requires OPENAI_API_KEY in .env in the project root: GrantMaster/.env)
     from dotenv import load_dotenv
