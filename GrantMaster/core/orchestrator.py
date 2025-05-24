@@ -66,6 +66,27 @@ class Orchestrator:
         else:
             return {'analysis_notes': 'Further review needed for this grant.', 'suitability_score': 0.65, 'status': 'analyzed_needs_review'}
 
+    def _mock_grantscribe_draft(self, grant_details, org_profile, section_name):
+        """
+        Internal mock method to simulate draft generation by a GrantScribe agent.
+        """
+        grant_title = grant_details.get('grant_title', 'Unknown Grant')
+        org_name = org_profile.get('name', 'Unknown Org')
+        print(f"[Orchestrator LOG] Called _mock_grantscribe_draft for section '{section_name}' of grant '{grant_title}'")
+        return f"This is a generated draft for section '{section_name}' regarding grant '{grant_title}', considering the organization '{org_name}'."
+
+    def _mock_refinebot_review(self, draft_content):
+        """
+        Internal mock method to simulate draft review by a RefineBot agent.
+        """
+        print(f"[Orchestrator LOG] Called _mock_refinebot_review for draft starting with: '{draft_content[:75]}...'")
+        # Attempt to extract section name if it's in the format 'section 'section_name''
+        try:
+            extracted_section_name = draft_content.split("'")[1] if "'" in draft_content else "the specified section"
+        except IndexError:
+            extracted_section_name = "the specified section (could not extract)"
+        return f"Mock RefineBot feedback: The draft looks promising. Consider elaborating on impact metrics. The section on '{extracted_section_name}' is a good start."
+
     def run_research_pipeline(self, website_url, login_credentials):
         """
         Orchestrates the research and initial analysis of grant opportunities.
@@ -137,6 +158,77 @@ class Orchestrator:
                     print(f"[Orchestrator ERROR] Error updating analysis for grant ID {grant_id}: {e}")
         
         print("[Orchestrator LOG] run_research_pipeline completed.")
+
+    def run_writing_pipeline(self, grant_id, section_name):
+        """
+        Orchestrates the writing and review pipeline for a specific grant section.
+        """
+        print(f"[Orchestrator LOG] Starting run_writing_pipeline for grant ID: {grant_id}, section: '{section_name}'")
+
+        # 1. Get Grant Details
+        grant_details = None
+        try:
+            grant_details = self.data_manager.get_grant_opportunity(grant_id)
+            if not grant_details:
+                print(f"[Orchestrator ERROR] Grant with ID {grant_id} not found. Aborting writing pipeline.")
+                return
+            # Use .get for safer access in log, though we just checked grant_details exists
+            print(f"[Orchestrator LOG] Retrieved grant details for '{grant_details.get('grant_title', 'N/A')}'.")
+        except Exception as e:
+            print(f"[Orchestrator ERROR] Failed to retrieve grant details for ID {grant_id}: {e}")
+            return
+
+        # 2. Get Organization Profile
+        org_profile = None
+        try:
+            org_profile = self.data_manager.get_organization_profile()
+            if not org_profile:
+                print(f"[Orchestrator ERROR] Organization profile not found. Aborting writing pipeline.")
+                return
+            # Use .get for safer access in log
+            print(f"[Orchestrator LOG] Retrieved organization profile: '{org_profile.get('name', 'N/A')}'.")
+        except Exception as e:
+            print(f"[Orchestrator ERROR] Failed to retrieve organization profile: {e}")
+            return
+
+        # 3. Draft Section (Mock)
+        draft_content = None
+        try:
+            draft_content = self._mock_grantscribe_draft(grant_details, org_profile, section_name)
+            print(f"[Orchestrator LOG] Draft for section '{section_name}': '{draft_content[:100]}...'")
+        except Exception as e:
+            print(f"[Orchestrator ERROR] Error in _mock_grantscribe_draft for section '{section_name}': {e}")
+            # draft_content remains None
+
+        # 4. Review Draft (Mock)
+        feedback = None
+        if draft_content is not None:
+            try:
+                feedback = self._mock_refinebot_review(draft_content)
+                print(f"[Orchestrator LOG] Feedback for section '{section_name}': '{feedback}'")
+            except Exception as e:
+                print(f"[Orchestrator ERROR] Error in _mock_refinebot_review for section '{section_name}': {e}")
+                # feedback remains None
+        else:
+            feedback = "No draft content to review due to prior error." # As per instruction
+            print(f"[Orchestrator LOG] Section '{section_name}': {feedback}")
+
+
+        # 5. Save Section Draft
+        if draft_content is not None:
+            try:
+                self.data_manager.save_section_draft(
+                    grant_opportunity_id=grant_id,
+                    section_name=section_name,
+                    draft_content=draft_content,
+                    version=1,  # Assuming version 1 for this initial draft
+                    feedback=feedback if feedback else '' # Ensure feedback is not None
+                )
+                print(f"[Orchestrator LOG] Saved draft for section '{section_name}' of grant ID {grant_id} with feedback.")
+            except Exception as e:
+                print(f"[Orchestrator ERROR] Error saving draft for section '{section_name}', grant ID {grant_id}: {e}")
+        
+        print(f"[Orchestrator LOG] run_writing_pipeline for grant ID {grant_id}, section '{section_name}' completed.")
 
     def start_grant_application_flow(self, organization_profile, grant_opportunity):
         # Placeholder for workflow logic
@@ -227,40 +319,62 @@ if __name__ == '__main__':
             print("  No grants found in DB after pipeline.")
         print("--- Verification Finished ---\n")
 
-        # The original start_grant_application_flow call can be kept for other testing
-        # or removed if this __main__ is now focused on run_research_pipeline.
-        # For now, let's retrieve a specific grant (e.g., one of the mock ones)
-        # and the org profile again for start_grant_application_flow, if it's still to be tested.
-
-        print("Retrieving org profile and a specific grant for start_grant_application_flow demo...")
-        org_profile_for_flow = dm_setup.get_organization_profile() # Re-fetch for clarity
-        
-        # Attempt to get one of the grants processed by the pipeline
-        # Assuming 'Mock Grant Alpha' was processed and saved.
-        # We need its ID. The pipeline saves it. Let's try to fetch by title if DataManager had such a method,
-        # or just fetch all and pick one. For simplicity, fetch all and try to use the first one.
-        
-        processed_grants = dm_setup.get_all_grant_opportunities()
-        grant_opp_for_flow = None
-        if processed_grants:
-            # Try to find "Mock Grant Alpha" specifically if it has a known status or details
-            for g in processed_grants:
-                if g.get('grant_title') == 'Mock Grant Alpha':
-                    grant_opp_for_flow = g
-                    break
-            if not grant_opp_for_flow: # Fallback to first grant if Alpha not found
-                grant_opp_for_flow = processed_grants[0]
-        
-        if org_profile_for_flow and grant_opp_for_flow:
-            print(f"Organization profile and grant '{grant_opp_for_flow.get('grant_title')}' loaded for start_grant_application_flow.")
-            orchestrator.start_grant_application_flow(org_profile_for_flow, grant_opp_for_flow)
-            print("Orchestrator start_grant_application_flow initiated.")
+        # --- Preparing for Writing Pipeline DEMO ---
+        print("\n--- Preparing for Writing Pipeline DEMO ---")
+        test_grant_id_for_writing = None
+        # all_grants_after_pipeline is already available from the verification step above
+        if all_grants_after_pipeline:
+            test_grant_id_for_writing = all_grants_after_pipeline[0]['id'] # Get ID of the first grant
+            print(f"Using grant ID {test_grant_id_for_writing} ('{all_grants_after_pipeline[0]['grant_title']}') for writing pipeline demo.")
         else:
-            print("ERROR: Failed to retrieve org profile or a suitable grant opportunity for start_grant_application_flow demo.")
-            if not org_profile_for_flow:
-                print("Org profile for flow was None.")
-            if not grant_opp_for_flow:
-                print("Grant opp for flow was None.")
+            print("No grants found from research pipeline to use for writing pipeline demo. Skipping.")
+
+        if test_grant_id_for_writing:
+            print("\n--- Running Writing Pipeline DEMO ---")
+            orchestrator.run_writing_pipeline(
+                grant_id=test_grant_id_for_writing,
+                section_name="Project Narrative" # Example section name
+            )
+            print("--- Writing Pipeline DEMO Finished ---\n")
+
+            # Optional: Verify section draft was saved
+            print("\n--- Verifying Section Draft in DB after writing pipeline ---")
+            # Use dm_setup to check the database directly
+            section_drafts = dm_setup.get_all_sections_for_grant(test_grant_id_for_writing)
+            if section_drafts:
+                found_draft = False
+                for draft in section_drafts:
+                    if draft['section_name'] == "Project Narrative":
+                        print(f"  Found draft for section '{draft['section_name']}': '{draft['draft_content'][:50]}...' (v{draft['version']})")
+                        print(f"    Feedback: {draft['feedback']}")
+                        found_draft = True
+                        break
+                if not found_draft:
+                    print(f"  Draft for section 'Project Narrative' not found for grant ID {test_grant_id_for_writing}.")
+            else:
+                print(f"  No sections found for grant ID {test_grant_id_for_writing}.")
+            print("--- Section Verification Finished ---\n")
+        
+        # The original start_grant_application_flow call can be removed or adapted.
+        # For this subtask, focusing on run_writing_pipeline, so I'll comment it out.
+        # print("Retrieving org profile and a specific grant for start_grant_application_flow demo...")
+        # org_profile_for_flow = dm_setup.get_organization_profile() 
+        # processed_grants = dm_setup.get_all_grant_opportunities()
+        # grant_opp_for_flow = None
+        # if processed_grants:
+        #     for g in processed_grants:
+        #         if g.get('grant_title') == 'Mock Grant Alpha':
+        #             grant_opp_for_flow = g
+        #             break
+        #     if not grant_opp_for_flow: 
+        #         grant_opp_for_flow = processed_grants[0]
+        # 
+        # if org_profile_for_flow and grant_opp_for_flow:
+        #     print(f"Organization profile and grant '{grant_opp_for_flow.get('grant_title')}' loaded for start_grant_application_flow.")
+        #     orchestrator.start_grant_application_flow(org_profile_for_flow, grant_opp_for_flow)
+        #     print("Orchestrator start_grant_application_flow initiated.")
+        # else:
+        #     print("ERROR: Failed to retrieve org profile or a suitable grant opportunity for start_grant_application_flow demo.")
 
     except ValueError as ve: # Catching the specific ValueError from Orchestrator's __init__ (e.g., API key missing)
         print(f"Configuration error during Orchestrator testing: {ve}")
