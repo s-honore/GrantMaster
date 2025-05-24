@@ -1,10 +1,26 @@
+import os
+from dotenv import load_dotenv
+from openai import OpenAI
 from data_manager import DataManager # Assumes data_manager.py is in the same directory (core)
 
 class Orchestrator:
-    def __init__(self, data_manager):
-        self.data_manager = data_manager
-        # Initialize other agents or components here later
-        print("Orchestrator initialized.")
+    def __init__(self, db_name='grantmaster.db'):
+        self.data_manager = DataManager(db_name=db_name)
+        
+        # Placeholder agent attributes
+        self.research_agent = None
+        self.analysis_agent = None
+        self.writing_agent = None
+        self.review_agent = None
+        
+        load_dotenv()
+        api_key = os.getenv("OPENAI_API_KEY")
+        
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not found in environment variables.")
+            
+        self.openai_client = OpenAI(api_key=api_key)
+        print("Orchestrator and OpenAI client initialized successfully.")
 
     def start_grant_application_flow(self, organization_profile, grant_opportunity):
         # Placeholder for workflow logic
@@ -16,42 +32,45 @@ class Orchestrator:
 
 if __name__ == '__main__':
     # This block is for example usage and basic testing of the Orchestrator.
-    # It should use a distinct test database to avoid conflicts with main data.
+    # It uses a dedicated test database to avoid conflicts with main/development data.
     
-    db_name_for_orchestrator_test = 'test_orchestrator.db'
-    dm = None  # Initialize dm to None for cleanup in finally block
+    db_name_for_test = 'test_orchestrator_main.db'
+    dm_setup = None  # Initialize to None for cleanup in finally block
 
     try:
-        print(f"Setting up DataManager with '{db_name_for_orchestrator_test}' for Orchestrator testing...")
-        dm = DataManager(db_name=db_name_for_orchestrator_test)
+        print(f"Setting up DataManager for test data setup with '{db_name_for_test}'...")
+        dm_setup = DataManager(db_name=db_name_for_test)
 
-        # Populate with dummy data for testing the flow
-        print("Saving dummy organization profile...")
-        dm.save_organization_profile(
-            name="Test Org for Orchestrator",
-            mission="To test orchestration.",
-            projects="Various test projects.",
-            needs="More testing.",
-            target_demographics="Test users."
-        )
-        org_profile = dm.get_organization_profile()
+        print(f"Initializing Orchestrator with its DataManager pointed to '{db_name_for_test}'...")
+        # Note: OPENAI_API_KEY must be set in .env or environment for Orchestrator to init successfully.
+        orchestrator = Orchestrator(db_name=db_name_for_test)
 
-        print("Saving dummy grant opportunity...")
-        grant_id = dm.save_grant_opportunity(
-            grant_title="Orchestrator Test Grant",
-            funder="Test Funder",
-            deadline="2025-01-01",
-            description="A grant to test the orchestrator.",
-            eligibility="All testers.",
-            focus_areas="Testing, Orchestration"
+        # Populate with dummy data for testing the flow using dm_setup
+        print("Saving dummy organization profile using dm_setup...")
+        dm_setup.save_organization_profile(
+            name="Test Org for Orchestrator Main",
+            mission="To test orchestration with a dedicated test DB.",
+            projects="Various test projects under main test.",
+            needs="More testing with dedicated DB.",
+            target_demographics="Test users for main test."
         )
-        grant_opp = dm.get_grant_opportunity(grant_id)
+        org_profile = dm_setup.get_organization_profile()
+
+        print("Saving dummy grant opportunity using dm_setup...")
+        grant_id = dm_setup.save_grant_opportunity(
+            grant_title="Orchestrator Main Test Grant",
+            funder="Test Funder Main",
+            deadline="2025-01-15",
+            description="A grant to test the orchestrator with its own test DB.",
+            eligibility="All testers in main test.",
+            focus_areas="Testing, Orchestration, Main DB"
+        )
+        grant_opp = dm_setup.get_grant_opportunity(grant_id)
 
         if org_profile and grant_opp:
             print("Organization profile and grant opportunity loaded for testing.")
-            orchestrator = Orchestrator(data_manager=dm)
             orchestrator.start_grant_application_flow(org_profile, grant_opp)
-            print("Orchestrator flow initiated.")
+            print("Orchestrator flow initiated with test database.")
         else:
             print("ERROR: Failed to retrieve organization profile or grant opportunity for testing.")
             if not org_profile:
@@ -59,21 +78,34 @@ if __name__ == '__main__':
             if not grant_opp:
                 print(f"Grant opportunity was None (tried to fetch ID: {grant_id}).")
 
+    except ValueError as ve: # Catching the specific ValueError from Orchestrator's __init__ (e.g., API key missing)
+        print(f"Configuration error during Orchestrator testing: {ve}")
     except Exception as e:
-        print(f"An error occurred during Orchestrator testing: {e}")
+        print(f"An unexpected error occurred during Orchestrator testing: {e}")
         import traceback
         traceback.print_exc()
 
     finally:
         # Clean up the test database
-        import os
-        if dm:
-            print(f"Closing connection to '{db_name_for_orchestrator_test}'...")
-            dm.close_connection()
+        if dm_setup and dm_setup.conn: # Check if dm_setup was initialized and connection exists
+            print(f"Closing connection to '{db_name_for_test}' used by dm_setup...")
+            dm_setup.close_connection()
         
-        if os.path.exists(db_name_for_orchestrator_test):
-            print(f"Removing test database '{db_name_for_orchestrator_test}'...")
-            os.remove(db_name_for_orchestrator_test)
-            print(f"Test database '{db_name_for_orchestrator_test}' removed.")
+        # The Orchestrator's DataManager connection (orchestrator.data_manager.conn)
+        # will be the same as dm_setup.conn if db_name_for_test was used for both.
+        # DataManager.close_connection() handles if conn is already None.
+        # If Orchestrator was initialized with a different db_name, its connection should be closed separately.
+        # However, in this setup, orchestrator.data_manager is dm_setup or uses the same db_name.
+        # If orchestrator was created and its data_manager is different, that's a more complex scenario.
+        # For now, assume orchestrator.data_manager.close_connection() is covered if it's the same as dm_setup.
+        # If orchestrator might have its own connection that is different, we'd need:
+        # if 'orchestrator' in locals() and orchestrator.data_manager and orchestrator.data_manager.conn:
+        #    orchestrator.data_manager.close_connection()
+        # But this is redundant if db_name_for_test is used for Orchestrator.
+
+        if os.path.exists(db_name_for_test):
+            print(f"Removing test database '{db_name_for_test}'...")
+            os.remove(db_name_for_test)
+            print(f"Test database '{db_name_for_test}' removed.")
         else:
-            print(f"Test database '{db_name_for_orchestrator_test}' not found, no need to remove.")
+            print(f"Test database '{db_name_for_test}' not found, no need to remove.")
