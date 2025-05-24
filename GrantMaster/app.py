@@ -190,6 +190,165 @@ else:
 # Add a divider for visual separation before any future sections
 st.divider()
 
-# Placeholder for future UI sections
-# st.header("Research Grant Opportunities")
-# ...
+# Ensure orchestrator is available before attempting to add more UI
+if orchestrator and orchestrator.data_manager:
+    st.header("Grant Research")
+
+    # Use unique keys for inputs in different sections if names are similar
+    # or ensure session state for these is handled distinctly if needed.
+    # For simple text_inputs, unique keys prevent widget ID collisions.
+    st.session_state.research_url = st.text_input(
+        "Website URL", 
+        value=st.session_state.get('research_url', "http://mockgrants.example.com"), # Pre-fill with example
+        key="research_url_input" # Explicit key
+    )
+    st.session_state.research_username = st.text_input(
+        "Username (if applicable)", 
+        value=st.session_state.get('research_username', "mock_user"), # Pre-fill
+        key="research_username_input"
+    )
+    st.session_state.research_password = st.text_input(
+        "Password (if applicable)", 
+        type="password", 
+        value=st.session_state.get('research_password', "mock_pass"), # Pre-fill
+        key="research_password_input"
+    )
+
+    # The button and its logic will be detailed in the next subtask (step 2 of the plan).
+    # For now, just adding the button placeholder.
+    if st.button("Start Research", key="start_research_button"):
+        # Validate inputs
+        if not st.session_state.research_url.strip():
+            st.warning("Please enter a Website URL to start research.")
+            st.stop() # Stop execution for this callback if URL is missing
+
+        # Retrieve organization profile
+        org_profile = None
+        # This check for orchestrator and data_manager is already done before the header
+        # but good to be defensive if this code block were ever moved.
+        if orchestrator and orchestrator.data_manager: 
+            try:
+                org_profile = orchestrator.data_manager.get_organization_profile()
+            except Exception as e:
+                st.error(f"Error fetching organization profile: {e}")
+                st.stop()
+        
+        if not org_profile or not org_profile.get('name'): # Check if profile exists and has a name
+            st.error("Organization Profile is not set or is incomplete. Please save a complete Organization Profile first.")
+            st.stop()
+
+        # If inputs and profile are valid, proceed with the research pipeline
+        st.info(f"Starting research for URL: {st.session_state.research_url}")
+        login_credentials = {
+            # Ensure these session_state keys match the keys used in st.text_input
+            "username": st.session_state.research_username_input, 
+            "password": st.session_state.research_password_input
+        }
+
+        with st.spinner("Performing research and analysis... This may take a few moments. Please wait."):
+            try:
+                # Call the orchestrator's research pipeline
+                # This is a blocking call. Streamlit will show the spinner until it's done.
+                orchestrator.run_research_pipeline(
+                    st.session_state.research_url_input, # Use the key from st.text_input
+                    login_credentials
+                )
+                st.session_state.research_pipeline_completed = True # Flag to display results
+                st.session_state.research_error = None # Clear any previous error
+                # print("Research pipeline completed successfully via UI.") # For debugging
+                
+            except Exception as e:
+                st.error(f"An error occurred during the research pipeline: {e}")
+                st.session_state.research_pipeline_completed = False
+                st.session_state.research_error = str(e)
+                # import traceback # For debugging
+                # print(f"Error in research pipeline from UI: {e}
+# {traceback.format_exc()}") # For debugging
+
+    # The display of results will be handled in the next step/subtask,
+    # potentially checking st.session_state.research_pipeline_completed.
+    # For now, this subtask focuses on the button click logic and pipeline execution.
+    # The st.divider() and placeholder for "Grant Writing" section should remain after this block.
+
+    if 'research_pipeline_completed' in st.session_state:
+        if st.session_state.research_pipeline_completed:
+            st.success("Research pipeline completed successfully!") # Moved here to be above results
+            
+            # Fetch and display analyzed grants
+            try:
+                if orchestrator and orchestrator.data_manager:
+                    all_grants = orchestrator.data_manager.get_all_grant_opportunities()
+                    # The research_pipeline mock sets status like 'analyzed_strong_match', 'analyzed_needs_review'
+                    analyzed_grants = [g for g in all_grants if g.get('status', '').startswith('analyzed_')]
+
+                    if not analyzed_grants and all_grants:
+                        st.info("No grants with a status starting 'analyzed_' found. "
+                                "Displaying all grants returned by the research pipeline for review (mock data may not have 'analyzed' status yet).")
+                        # This fallback is useful if the mock pipeline doesn't perfectly set the 'analyzed' status
+                        # or if we want to see all results during development.
+                        # In production, might only show strictly 'analyzed_' grants.
+                        analyzed_grants_to_display = all_grants
+                    elif not analyzed_grants:
+                        st.info("No grants were found or analyzed by the research pipeline.")
+                        analyzed_grants_to_display = []
+                    else:
+                        analyzed_grants_to_display = analyzed_grants
+                    
+                    if analyzed_grants_to_display:
+                        st.subheader("Research Results: Identified & Analyzed Grants")
+                        for i, grant in enumerate(analyzed_grants_to_display):
+                            st.markdown(f"---") # Visual separator for each grant
+                            st.markdown(f"#### {i+1}. {grant.get('grant_title', 'N/A')}")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.markdown(f"**Funder:** {grant.get('funder', 'N/A')}")
+                                st.markdown(f"**Deadline:** {grant.get('deadline', 'N/A')}")
+                            with col2:
+                                st.markdown(f"**Suitability Score:** {grant.get('suitability_score', 'N/A')}/10")
+                                st.markdown(f"**Status:** {grant.get('status', 'N/A')}")
+                            
+                            st.markdown(f"**Rationale/Analysis Notes:** {grant.get('analysis_notes', 'N/A')}")
+
+                            with st.expander("View Full Grant Details"):
+                                st.markdown(f"**Description:** {grant.get('description', 'N/A')}")
+                                st.markdown(f"**Eligibility:** {grant.get('eligibility', 'N/A')}")
+                                st.markdown(f"**Focus Areas:** {grant.get('focus_areas', 'N/A')}")
+                                if grant.get('link'):
+                                    st.markdown(f"**Link:** {grant.get('link')}")
+                                if grant.get('raw_research_data'):
+                                    st.text_area("Raw Research Data", value=grant.get('raw_research_data'), height=150, disabled=True, key=f"raw_data_{grant.get('id', i)}")
+                else:
+                    st.warning("Orchestrator or DataManager is not available to fetch grant results.")
+            
+            except Exception as e:
+                st.error(f"Error displaying grant opportunities: {e}")
+                # import traceback # For debugging
+                # print(f"Error displaying results: {e}
+# {traceback.format_exc()}") # For debugging
+
+        elif st.session_state.get('research_error'): # Check if there was an error flagged
+            # The error message from the pipeline execution is already displayed by st.error()
+            # This block is if we want to add more info or keep the error message persistent
+            # st.error(f"Research pipeline failed: {st.session_state.research_error}") # Redundant if already shown
+            pass # Error already shown by the button logic's try-except block
+
+        # Clean up session state flags for next run, if desired, or keep them for inspection
+        # For example, could add a "Clear Results" button that resets these:
+        # if st.button("Clear Research Results"):
+        #     st.session_state.research_pipeline_completed = False
+        #     st.session_state.research_error = None
+        #     st.rerun()
+
+    # The main st.divider() for the "Grant Research" section should be after this result display logic.
+
+    # Add another divider for visual separation before any future sections
+    st.divider()
+
+    # Placeholder for "Grant Writing" section if it comes next
+    # st.header("Grant Application Writing")
+    # ...
+else:
+    # This else might be redundant if the app stops earlier when orchestrator is not available,
+    # but good for safety if more UI sections are added that don't depend on orchestrator.
+    st.warning("Grant Research section cannot be displayed as the system is not fully initialized.")
