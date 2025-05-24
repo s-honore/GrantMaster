@@ -180,6 +180,82 @@ class DataManager:
             # raise
             return []
 
+    def save_section_draft(self, grant_opportunity_id, section_name, draft_content, version=1, feedback=''):
+        """
+        Saves a new grant application section draft to the database.
+        Returns the ID of the newly inserted row.
+        """
+        try:
+            self.cursor.execute('''
+                INSERT INTO grant_application_sections (grant_opportunity_id, section_name, draft_content, version, feedback)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (grant_opportunity_id, section_name, draft_content, version, feedback))
+            self.conn.commit()
+            return self.cursor.lastrowid
+        except sqlite3.Error as e:
+            print(f"Database error in save_section_draft: {e}")
+            # raise
+            return None
+
+    def get_section_draft(self, grant_opportunity_id, section_name, version=None):
+        """
+        Retrieves a specific section draft, or the latest version if version is None.
+        Returns a dictionary or None.
+        """
+        try:
+            query = "SELECT * FROM grant_application_sections WHERE grant_opportunity_id = ? AND section_name = ?"
+            params = [grant_opportunity_id, section_name]
+            
+            if version is not None:
+                query += " AND version = ?"
+                params.append(version)
+            else:
+                query += " ORDER BY version DESC LIMIT 1"
+                
+            self.cursor.execute(query, params)
+            row = self.cursor.fetchone()
+            
+            if row:
+                column_names = [description[0] for description in self.cursor.description]
+                return dict(zip(column_names, row))
+            else:
+                return None
+        except sqlite3.Error as e:
+            print(f"Database error in get_section_draft: {e}")
+            # raise
+            return None
+
+    def get_all_sections_for_grant(self, grant_opportunity_id):
+        """
+        Retrieves the latest version of all unique sections for a given grant opportunity.
+        Returns a list of dictionaries.
+        """
+        try:
+            # Using the suggested SQL pattern to get the latest version of each section
+            query = """
+                SELECT t1.* 
+                FROM grant_application_sections t1
+                WHERE t1.version = (
+                    SELECT MAX(t2.version) 
+                    FROM grant_application_sections t2 
+                    WHERE t2.grant_opportunity_id = t1.grant_opportunity_id 
+                    AND t2.section_name = t1.section_name
+                )
+                AND t1.grant_opportunity_id = ?
+            """
+            self.cursor.execute(query, (grant_opportunity_id,))
+            rows = self.cursor.fetchall()
+            sections = []
+            if rows:
+                column_names = [description[0] for description in self.cursor.description]
+                for row in rows:
+                    sections.append(dict(zip(column_names, row)))
+            return sections
+        except sqlite3.Error as e:
+            print(f"Database error in get_all_sections_for_grant: {e}")
+            # raise
+            return []
+
     def close_connection(self):
         """
         Closes the database connection.
