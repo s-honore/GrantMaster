@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time # For explicit waits if necessary, or for post-login observation
+import json # Added for WebSleuthAgent
 # Consider adding other imports like 'requests' later for actual web interaction.
 
 def perform_website_login(url, username, password, timeout=10):
@@ -130,6 +131,105 @@ def perform_website_login(url, username, password, timeout=10):
             driver.quit()
         return None
 
+class WebSleuthAgent:
+    def __init__(self, openai_client, model="gpt-3.5-turbo"):
+        self.openai_client = openai_client
+        self.model = model
+        # Max characters for page source to feed to LLM (to avoid excessive token usage)
+        # This is a very rough limit, actual token limits are more complex.
+        self.max_page_source_chars = 15000 # Approx 3k-4k tokens, well within 16k gpt-3.5-turbo context
+        print(f"WebSleuthAgent initialized with model: {self.model}")
+
+    def research_and_extract(self, driver, research_task_description):
+        print(f"WebSleuthAgent: Starting research and extraction. Task: '{research_task_description}'")
+        try:
+            page_source = driver.page_source
+            print(f"WebSleuthAgent: Page source obtained (length: {len(page_source)} chars).")
+        except Exception as e:
+            print(f"WebSleuthAgent ERROR: Could not get page source from driver: {e}")
+            return []
+
+        if len(page_source) > self.max_page_source_chars:
+            print(f"WebSleuthAgent WARNING: Page source is too long ({len(page_source)} chars). Truncating to {self.max_page_source_chars} chars.")
+            page_source = page_source[:self.max_page_source_chars]
+
+        prompt = f"""
+        You are an expert AI assistant tasked with extracting grant information from a given web page's source code.
+        The user's specific research task is: "{research_task_description}"
+
+        Please analyze the following HTML page source and extract all grant opportunities that match the research task.
+        For each grant, provide the following details if available:
+        - title: The title of the grant.
+        - funder: The organization funding the grant.
+        - deadline: The application deadline (try to format as YYYY-MM-DD if possible, otherwise as found).
+        - description: A brief description of the grant.
+        - eligibility: Key eligibility criteria.
+        - focus_areas: The main areas or topics the grant supports.
+
+        Return the information as a JSON list of objects. Each object should represent one grant.
+        Example of a single JSON object:
+        {{
+            "title": "Example Grant Title",
+            "funder": "Example Funder Name",
+            "deadline": "2024-12-31",
+            "description": "This is a sample description of the grant.",
+            "eligibility": "Non-profit organizations in the education sector.",
+            "focus_areas": "STEM Education, Literacy Programs"
+        }}
+
+        If no grants matching the task are found, or if the page source does not seem to contain grant information, return an empty list [].
+        Ensure your output is only the JSON list, with no introductory text or explanations.
+
+        Page Source to analyze:
+        ---
+        {page_source}
+        ---
+        """
+
+        print("WebSleuthAgent: Sending request to OpenAI API...")
+        try:
+            completion = self.openai_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are an expert AI assistant that extracts grant information from web page content and returns it as a valid JSON list of objects, where each object has keys: title, funder, deadline, description, eligibility, focus_areas."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.0, # Lower temperature for more deterministic output in extraction tasks
+                # response_format={ "type": "json_object" } # Requires GPT-4 Turbo or newer, good for ensuring JSON
+            )
+            response_content = completion.choices[0].message.content
+            print("WebSleuthAgent: Received response from OpenAI API.")
+        except Exception as e:
+            print(f"WebSleuthAgent ERROR: OpenAI API call failed: {e}")
+            return []
+
+        print(f"WebSleuthAgent: Raw API Response Content: {response_content[:500]}...") # Log snippet
+        try:
+            # The response might be a string that looks like a JSON list.
+            # Sometimes LLMs wrap JSON in ```json ... ```, try to strip that if present.
+            if response_content.strip().startswith("```json"):
+                response_content = response_content.strip()[7:-3].strip()
+            elif response_content.strip().startswith("```"): # Generic code block
+                 response_content = response_content.strip()[3:-3].strip()
+
+
+            extracted_grants = json.loads(response_content)
+            if not isinstance(extracted_grants, list):
+                print(f"WebSleuthAgent WARNING: LLM response was valid JSON but not a list. Type: {type(extracted_grants)}. Returning as a single item list if it's a dict, else empty.")
+                if isinstance(extracted_grants, dict): # Check if it's a dictionary
+                     return [extracted_grants] # Wrap a single dict in a list
+                return [] # Or handle as error / return empty list
+            
+            print(f"WebSleuthAgent: Successfully parsed JSON response. Found {len(extracted_grants)} item(s).")
+            return extracted_grants
+        except json.JSONDecodeError as e:
+            print(f"WebSleuthAgent ERROR: Failed to decode JSON from OpenAI response: {e}")
+            print(f"Problematic response content snippet: {response_content[:500]}") # Log part of the problematic response
+            return []
+        except Exception as e:
+            print(f"WebSleuthAgent ERROR: An unexpected error occurred during JSON parsing or handling: {e}")
+            return []
+
 class ResearcherAgent:
     def __init__(self, openai_client):
         self.openai_client = openai_client
@@ -242,6 +342,76 @@ if __name__ == '__main__':
             #     print(f"Login failed for {test_login_url_real}.")
 
             print("--- Finished testing perform_website_login ---")
+
+            # ... (after existing tests for perform_website_login)
+
+            print("\n--- Testing WebSleuthAgent with Mock Driver ---")
+
+            class MockSeleniumDriver:
+                def __init__(self, page_source_content=""):
+                    self.page_source = page_source_content
+                    print("MockSeleniumDriver initialized.")
+
+                def quit(self):
+                    print("MockSeleniumDriver quit() called.")
+
+            # Sample HTML-like content with grant information
+            mock_html_content = """
+            <html><body>
+                <h1>Grant Opportunities</h1>
+                <div class="grant-item">
+                    <h2>Environmental Research Grant</h2>
+                    <p>Funder: Green Future Foundation</p>
+                    <p>Deadline: 2024-12-31</p>
+                    <p>Description: Supports research into renewable energy sources.</p>
+                    <p>Eligibility: Accredited research institutions.</p>
+                    <p>Focus Areas: Renewable Energy, Climate Change</p>
+                </div>
+                <div class="grant-item">
+                    <h2>Community Art Project Grant</h2>
+                    <p>Funder: Creative Collective</p>
+                    <p>Deadline: 2024-11-15</p>
+                    <p>Description: Funds community-based art projects.</p>
+                    <p>Eligibility: Local artists and community groups.</p>
+                    <p>Focus Areas: Public Art, Community Engagement</p>
+                </div>
+                <div class="other-info">
+                    <p>This is not a grant. Just some other text.</p>
+                </div>
+                <div class="grant-item">
+                    <h2>Tech Innovation Challenge - No Deadline Info</h2>
+                    <p>Funder: Innovate Hub</p>
+                    <p>Description: For groundbreaking tech solutions. Eligibility: Startups and SMEs.</p>
+                    <p>Focus Areas: AI, SaaS, Fintech</p>
+                </div>
+            </body></html>
+            """
+
+            mock_driver = MockSeleniumDriver(page_source_content=mock_html_content)
+            
+            # Ensure 'client' (OpenAI client) is available from the earlier part of __main__
+            if 'client' in locals() and client is not None:
+                websleuth = WebSleuthAgent(openai_client=client)
+                
+                research_task = "Extract all available grant opportunities."
+                print(f"WebSleuthAgent: Calling research_and_extract with task: '{research_task}'")
+                
+                extracted_data = websleuth.research_and_extract(mock_driver, research_task)
+                
+                print("\n--- WebSleuthAgent Mock Test Results ---")
+                if extracted_data:
+                    for i, grant in enumerate(extracted_data):
+                        print(f"Grant {i+1}:")
+                        for key, value in grant.items():
+                            print(f"  {key}: {value}")
+                else:
+                    print("No data extracted by WebSleuthAgent in mock test, or an error occurred.")
+                
+                mock_driver.quit() # Call quit on the mock driver
+            else:
+                print("WebSleuthAgent Test: OpenAI client not available. Skipping.")
+            
+            print("--- Finished testing WebSleuthAgent ---")
             
         except Exception as e:
             print(f"An error occurred during ResearcherAgent demo: {e}")
