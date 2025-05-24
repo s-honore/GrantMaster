@@ -255,6 +255,21 @@ if orchestrator and orchestrator.data_manager:
                 )
                 st.session_state.research_pipeline_completed = True # Flag to display results
                 st.session_state.research_error = None # Clear any previous error
+                
+                # ADD THIS MOCK LOG CREATION:
+                mock_research_log = [
+                    f"Called Orchestrator's run_research_pipeline (actual log to be implemented in Orchestrator).",
+                    f"Input URL: {st.session_state.research_url}", # Using research_url as research_url_input might not be in session_state here if not set by text_input yet
+                    "Simulated call to WebSleuth agent for website content extraction.",
+                    "Simulated processing of extracted content.",
+                    "Looping through potential grants identified:",
+                    "  - Simulated call to OpportunityMatcher agent for Grant Alpha.",
+                    "  - Simulated saving/updating Grant Alpha via DataManager.",
+                    "  - Simulated call to OpportunityMatcher agent for Grant Beta.",
+                    "  - Simulated saving/updating Grant Beta via DataManager."
+                ]
+                st.session_state.research_process_log = mock_research_log
+                # print("Mock research process log created.") # For debugging
                 # print("Research pipeline completed successfully via UI.") # For debugging
                 
             except Exception as e:
@@ -340,6 +355,23 @@ if orchestrator and orchestrator.data_manager:
         #     st.session_state.research_error = None
         #     st.rerun()
 
+    # --- Display Process Log (Grant Research) ---
+    # This should be placed after the results of the research pipeline are displayed.
+    if 'research_process_log' in st.session_state and st.session_state.research_process_log:
+        with st.expander("Process Log & Reasoning (Grant Research)", expanded=False):
+            for log_entry in st.session_state.research_process_log:
+                if isinstance(log_entry, tuple) and len(log_entry) == 2:
+                    st.markdown(f"**{log_entry[0]}:** {log_entry[1]}")
+                elif isinstance(log_entry, dict):
+                    st.markdown(f"**{log_entry.get('step','Log')}:** {log_entry.get('detail','N/A')}")
+                    if log_entry.get('output_summary'):
+                         st.caption(f"Output: {log_entry.get('output_summary')}")
+                else:
+                    st.text(str(log_entry))
+            if st.button("Clear Research Log", key="clear_research_log_button"):
+                st.session_state.research_process_log = []
+                st.rerun()
+
     # The main st.divider() for the "Grant Research" section should be after this result display logic.
 
     # Add another divider for visual separation before any future sections
@@ -348,6 +380,192 @@ if orchestrator and orchestrator.data_manager:
     # Placeholder for "Grant Writing" section if it comes next
     # st.header("Grant Application Writing")
     # ...
+
+    # Ensure orchestrator is available before attempting to add more UI
+    # This check is repeated for modularity, though the outer 'if' already covers it.
+    # If orchestrator and orchestrator.data_manager: (This line is part of the provided code, let's use it)
+    st.header("Grant Application Writing")
+
+    # --- Grant Selection Dropdown ---
+    analyzed_grants_for_writing = []
+    grant_options = {"Select a grant...": None} # Default option
+
+    try:
+        all_grants = orchestrator.data_manager.get_all_grant_opportunities()
+        if all_grants:
+            # Filter for grants that have been through some analysis
+            # (status starts with 'analyzed_' or has a suitability_score)
+            analyzed_grants_for_writing = [
+                g for g in all_grants if g.get('status', '').startswith('analyzed_') or g.get('suitability_score') is not None
+            ]
+            if analyzed_grants_for_writing:
+                for grant in analyzed_grants_for_writing:
+                    option_label = f"{grant.get('grant_title', 'Untitled Grant')} (ID: {grant.get('id')}, Score: {grant.get('suitability_score', 'N/A')})"
+                    grant_options[option_label] = grant.get('id')
+            # else:
+                # st.info("No analyzed grants available to select for writing. Please run the research pipeline first or ensure grants are analyzed.")
+    except Exception as e:
+        st.error(f"Error loading grants for writing selection: {e}")
+        # print(f"Error loading grants for writing UI: {e}") # For debugging
+    
+    # Use session state to hold the currently selected option string to avoid losing it on reruns
+    # when other parts of the app might trigger a rerun.
+    if 'selected_grant_option_writing' not in st.session_state:
+        st.session_state.selected_grant_option_writing = "Select a grant..."
+
+    # Update selected_grant_option_writing when user changes selection in selectbox
+    # The actual grant ID will be derived from this option string when needed.
+    st.session_state.selected_grant_option_writing = st.selectbox(
+        "Choose an Analyzed Grant to Work On:",
+        options=list(grant_options.keys()), # Pass list of keys (labels)
+        key="writing_grant_select_sb", # Unique key for the selectbox widget
+        index=0 # Default to "Select a grant..."
+    )
+    
+    # Derive selected_grant_id based on the selected option label
+    # selected_grant_id_for_writing = grant_options.get(st.session_state.selected_grant_option_writing)
+
+
+    # --- Section Name Input ---
+    if 'section_name_to_draft' not in st.session_state:
+        st.session_state.section_name_to_draft = "Needs Statement" # Default example
+
+    st.session_state.section_name_to_draft = st.text_input(
+        "Section Name to Draft",
+        value=st.session_state.section_name_to_draft,
+        placeholder="e.g., Needs Statement, Project Description",
+        key="writing_section_name_input" # Unique key
+    )
+    
+    # --- Specific Instructions (Optional) ---
+    if 'specific_instructions_for_draft' not in st.session_state:
+        st.session_state.specific_instructions_for_draft = "" # Default example
+
+    st.session_state.specific_instructions_for_draft = st.text_area(
+        "Specific Instructions for this Section (Optional)",
+        value=st.session_state.specific_instructions_for_draft,
+        placeholder="e.g., Emphasize community impact, target audience is XYZ foundation...",
+        height=100,
+        key="writing_specific_instructions_input" # Unique key
+    )
+
+
+    # The button and its logic will be detailed in the next subtask (step 2 of the plan).
+    # --- Draft Section Button ---
+    if st.button("Draft Section", key="draft_section_button"):
+        # Derive selected_grant_id from the session state holding the option string
+        selected_grant_id_for_writing = grant_options.get(st.session_state.selected_grant_option_writing)
+
+        if not selected_grant_id_for_writing:
+            st.warning("Please select a grant to work on.")
+            st.stop()
+        
+        if not st.session_state.section_name_to_draft.strip():
+            st.warning("Please enter a section name to draft.")
+            st.stop()
+
+        st.info(f"Drafting section: '{st.session_state.section_name_to_draft}' for grant ID: {selected_grant_id_for_writing}")
+        with st.spinner(f"Drafting section '{st.session_state.section_name_to_draft}'... This may take a few moments. Please wait."):
+            try:
+                # Call the orchestrator's writing pipeline
+                # For now, this pipeline doesn't return a log. We'll simulate one.
+                orchestrator.run_writing_pipeline(
+                    selected_grant_id_for_writing,
+                    st.session_state.section_name_to_draft,
+                    st.session_state.specific_instructions_for_draft # Pass specific instructions
+                )
+                
+                # Simulate process log for now (Phase 1)
+                mock_writing_log = [
+                    f"Called Orchestrator's run_writing_pipeline (actual log to be implemented in Orchestrator).",
+                    f"Input: Grant ID {selected_grant_id_for_writing}, Section: '{st.session_state.section_name_to_draft}'",
+                    f"Specific Instructions: '{st.session_state.specific_instructions_for_draft if st.session_state.specific_instructions_for_draft else 'None'}'",
+                    "Simulated call to GrantScribe agent for drafting.",
+                    "Simulated call to RefineBot agent for initial feedback (if any was part of mock).",
+                    "Section draft and any initial feedback saved by DataManager."
+                ]
+                st.session_state.writing_process_log = mock_writing_log
+                
+                # Fetch the latest draft to display it
+                # The run_writing_pipeline saves the draft, so we fetch it here.
+                # The get_section_draft method should ideally get the latest version by default.
+                drafted_section_info = orchestrator.data_manager.get_section_draft(
+                    grant_opportunity_id=selected_grant_id_for_writing,
+                    section_name=st.session_state.section_name_to_draft
+                    # version=None # To get the latest
+                )
+                st.session_state.current_draft_info = drafted_section_info # Store for display
+                st.session_state.drafting_completed = True # Flag for display logic
+                st.session_state.drafting_error = None
+
+                # print(f"Drafting pipeline completed via UI. Fetched draft: {drafted_section_info is not None}") # For debugging
+
+            except Exception as e:
+                st.error(f"An error occurred during the drafting pipeline: {e}")
+                st.session_state.drafting_completed = False
+                st.session_state.drafting_error = str(e)
+                st.session_state.current_draft_info = None
+                st.session_state.writing_process_log = [f"Error during drafting: {e}"]
+                # import traceback # For debugging
+                # print(f"Error in writing pipeline from UI: {e}
+# {traceback.format_exc()}") # For debugging
+
+    # The display of the draft and the process log will be handled in the next subtask (Step 3 of Phase 1).
+    # The st.divider() for this section should be AFTER the display logic.
+
+    # --- Display Drafted Section and Feedback ---
+    if 'drafting_completed' in st.session_state:
+        if st.session_state.drafting_completed and st.session_state.get('current_draft_info'):
+            draft_info = st.session_state.current_draft_info
+            st.subheader(f"Drafted Section: {draft_info.get('section_name', 'N/A')}")
+            
+            st.markdown("**Draft Content:**")
+            st.text_area(
+                label="Current Draft", # Label made more generic
+                value=draft_info.get('draft_content', 'No content available.'), 
+                height=300, 
+                disabled=True, # Display only, not for editing here
+                key=f"draft_display_{draft_info.get('id', 'new')}" # Unique key
+            )
+            
+            if draft_info.get('feedback'):
+                st.markdown("**Feedback on this Draft:**")
+                st.text_area(
+                    label="Feedback", # Label for feedback
+                    value=draft_info.get('feedback'), 
+                    height=100, 
+                    disabled=True,
+                    key=f"feedback_display_{draft_info.get('id', 'new')}" # Unique key
+                )
+            # else:
+                # st.info("No feedback recorded for this draft version yet.")
+
+        elif st.session_state.get('drafting_error'):
+            # Error message is already displayed by the button logic's try-except block.
+            # This space could be used for more detailed error info if needed.
+            pass
+
+    # --- Display Process Log (Grant Writing) ---
+    if 'writing_process_log' in st.session_state and st.session_state.writing_process_log:
+        with st.expander("Process Log & Reasoning (Grant Writing)", expanded=False):
+            for log_entry in st.session_state.writing_process_log:
+                if isinstance(log_entry, tuple) and len(log_entry) == 2: # For (step, detail) tuples
+                    st.markdown(f"**{log_entry[0]}:** {log_entry[1]}")
+                elif isinstance(log_entry, dict): # For more structured logs
+                    st.markdown(f"**{log_entry.get('step','Log')}:** {log_entry.get('detail','N/A')}")
+                    if log_entry.get('output_summary'):
+                         st.caption(f"Output: {log_entry.get('output_summary')}")
+                else: # Default to string
+                    st.text(str(log_entry))
+            # Button to clear the log for this section
+            if st.button("Clear Writing Log", key="clear_writing_log_button"):
+                st.session_state.writing_process_log = []
+                st.session_state.current_draft_info = None # Also clear draft from view
+                st.session_state.drafting_completed = False
+                st.rerun()
+
+    # Add another divider for visual separation
+    st.divider()
 else:
     # This else might be redundant if the app stops earlier when orchestrator is not available,
     # but good for safety if more UI sections are added that don't depend on orchestrator.

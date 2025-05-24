@@ -90,62 +90,96 @@ class Orchestrator:
     def run_research_pipeline(self, website_url, login_credentials):
         """
         Orchestrates the research and initial analysis of grant opportunities.
+        Returns a structured process log.
         """
+        process_log = []
         print(f"[Orchestrator LOG] Starting run_research_pipeline for URL: {website_url}")
+        process_log.append({'step': "Pipeline Start", 'detail': f"Research pipeline initiated for URL: {website_url}."})
 
         # 1. Get Organization Profile
+        org_profile = None
         try:
+            process_log.append({'step': "Organization Profile Retrieval", 'detail': "Attempting to fetch profile."})
             org_profile = self.data_manager.get_organization_profile()
             if not org_profile:
-                print("[Orchestrator ERROR] No organization profile found. Aborting research pipeline.")
-                return
-            print(f"[Orchestrator LOG] Organization profile '{org_profile.get('name', 'N/A')}' retrieved.")
+                msg = "No organization profile found. Aborting research pipeline."
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': "Organization Profile Retrieval", 'detail': msg, 'status': 'Error'})
+                return process_log
+            
+            org_name = org_profile.get('name', 'N/A')
+            print(f"[Orchestrator LOG] Organization profile '{org_name}' retrieved.")
+            process_log.append({'step': "Organization Profile Retrieval", 
+                                'detail': f"Organization profile '{org_name}' retrieved successfully.", 'status': 'Success'})
         except Exception as e:
-            print(f"[Orchestrator ERROR] Failed to retrieve organization profile: {e}")
-            return
+            msg = f"Failed to retrieve organization profile: {e}"
+            print(f"[Orchestrator ERROR] {msg}")
+            process_log.append({'step': "Organization Profile Retrieval", 'detail': msg, 'status': 'Error'})
+            return process_log
 
         # 2. Call WebSleuth (Mock)
         extracted_grants = []
+        process_log.append({'step': "Web Research (Mock)", 'detail': f"Calling _mock_websleuth_research for URL: {website_url}."})
         try:
             extracted_grants = self._mock_websleuth_research(website_url, login_credentials)
             print(f"[Orchestrator LOG] _mock_websleuth_research returned {len(extracted_grants)} grants.")
+            process_log.append({'step': "Web Research (Mock)", 
+                                'detail': f"_mock_websleuth_research executed.",
+                                'output_summary': f"Returned {len(extracted_grants)} grant(s).",
+                                'status': 'Success'})
         except Exception as e:
-            print(f"[Orchestrator ERROR] Error in _mock_websleuth_research: {e}")
-            # extracted_grants remains an empty list, so the loop below won't run.
-            # Depending on desired behavior, could return here or ensure pipeline completion log still runs.
-            # For now, let it proceed to log completion.
+            msg = f"Error in _mock_websleuth_research: {e}"
+            print(f"[Orchestrator ERROR] {msg}")
+            process_log.append({'step': "Web Research (Mock)", 'detail': msg, 'status': 'Error'})
+            # Continue to log completion, extracted_grants will be empty.
 
         # 3. Process Each Grant
-        for grant_data in extracted_grants:
+        if not extracted_grants:
+             process_log.append({'step': "Grant Processing", 'detail': "No grants extracted from web research to process."})
+        else:
+            process_log.append({'step': "Grant Processing", 'detail': f"Starting processing for {len(extracted_grants)} extracted grant(s)."})
+
+        for i, grant_data in enumerate(extracted_grants):
             grant_id = None
             analysis_result = None
-            grant_title_for_log = grant_data.get('grant_title', 'Unknown Title')
+            grant_title_for_log = grant_data.get('grant_title', f'Unknown Title (Grant {i+1})')
+            process_log.append({'step': f"Processing Grant: {grant_title_for_log}", 'detail': "Starting individual grant processing."})
 
             # 3.a Save Grant Opportunity
             try:
-                # Ensure all necessary keys are present, with defaults for optional ones if not in grant_data
-                # save_grant_opportunity expects: grant_title, funder, deadline, description, eligibility, focus_areas, 
-                #                                 raw_research_data='', analysis_notes='', suitability_score=None
-                # The mock provides: grant_title, funder, deadline, description, eligibility, focus_areas, raw_research_data
-                # So, this should work directly.
                 grant_id = self.data_manager.save_grant_opportunity(**grant_data)
                 print(f"[Orchestrator LOG] Saved grant '{grant_title_for_log}' with ID: {grant_id}.")
+                process_log.append({'step': f"Save Grant: {grant_title_for_log}", 
+                                    'detail': f"Saved grant with ID: {grant_id}.", 
+                                    'status': 'Success',
+                                    'grant_id': grant_id})
             except Exception as e:
-                print(f"[Orchestrator ERROR] Error saving grant '{grant_title_for_log}': {e}")
-                # Continue to the next grant if saving fails
-                continue 
+                msg = f"Error saving grant '{grant_title_for_log}': {e}"
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': f"Save Grant: {grant_title_for_log}", 'detail': msg, 'status': 'Error'})
+                continue # Continue to the next grant if saving fails
 
-            # 3.b Analyze Suitability (Mock) - only if saving was successful
+            # 3.b Analyze Suitability (Mock)
             if grant_id is not None:
+                process_log.append({'step': f"Analyze Suitability: {grant_title_for_log}", 
+                                    'detail': f"Calling _mock_opportunitymatcher_analyze for grant ID {grant_id}."})
                 try:
                     analysis_result = self._mock_opportunitymatcher_analyze(grant_data, org_profile)
                     print(f"[Orchestrator LOG] Analysis for grant ID {grant_id}: {analysis_result}")
+                    process_log.append({'step': f"Analyze Suitability: {grant_title_for_log}", 
+                                        'detail': "Analysis complete.", 
+                                        'output_summary': f"Score: {analysis_result.get('suitability_score')}, Status: {analysis_result.get('status')}",
+                                        'status': 'Success'})
                 except Exception as e:
-                    print(f"[Orchestrator ERROR] Error analyzing grant ID {grant_id}: {e}")
+                    msg = f"Error analyzing grant ID {grant_id}: {e}"
+                    print(f"[Orchestrator ERROR] {msg}")
+                    process_log.append({'step': f"Analyze Suitability: {grant_title_for_log}", 'detail': msg, 'status': 'Error'})
                     # analysis_result remains None
 
-            # 3.c Update Grant Analysis - only if saving and analysis were successful
+            # 3.c Update Grant Analysis
             if grant_id is not None and analysis_result is not None:
+                process_log.append({'step': f"Update Grant Analysis: {grant_title_for_log}", 
+                                    'detail': f"Attempting to update analysis in DB for grant ID {grant_id}."})
                 try:
                     self.data_manager.update_grant_analysis(
                         grant_id,
@@ -154,68 +188,125 @@ class Orchestrator:
                         analysis_result['status']
                     )
                     print(f"[Orchestrator LOG] Updated analysis for grant ID {grant_id}.")
+                    process_log.append({'step': f"Update Grant Analysis: {grant_title_for_log}", 
+                                        'detail': "Successfully updated analysis in database.", 
+                                        'status': 'Success'})
                 except Exception as e:
-                    print(f"[Orchestrator ERROR] Error updating analysis for grant ID {grant_id}: {e}")
+                    msg = f"Error updating analysis for grant ID {grant_id}: {e}"
+                    print(f"[Orchestrator ERROR] {msg}")
+                    process_log.append({'step': f"Update Grant Analysis: {grant_title_for_log}", 'detail': msg, 'status': 'Error'})
+            elif grant_id is not None and analysis_result is None:
+                 process_log.append({'step': f"Update Grant Analysis: {grant_title_for_log}", 
+                                    'detail': "Skipped updating analysis due to prior analysis error.", 'status': 'Skipped'})
         
         print("[Orchestrator LOG] run_research_pipeline completed.")
+        process_log.append({'step': "Pipeline End", 'detail': "Research pipeline finished."})
+        return process_log
 
-    def run_writing_pipeline(self, grant_id, section_name):
+    def run_writing_pipeline(self, grant_id, section_name, specific_instructions=''):
         """
         Orchestrates the writing and review pipeline for a specific grant section.
+        Returns a structured process log.
         """
-        print(f"[Orchestrator LOG] Starting run_writing_pipeline for grant ID: {grant_id}, section: '{section_name}'")
+        process_log = []
+        log_msg_start = f"Starting run_writing_pipeline for grant ID: {grant_id}, section: '{section_name}'"
+        print(f"[Orchestrator LOG] {log_msg_start}")
+        process_log.append({'step': "Pipeline Start", 'detail': log_msg_start, 'grant_id': grant_id, 'section_name': section_name})
+
+        if specific_instructions:
+            process_log.append({'step': "Input Parameters", 'detail': f"Specific instructions provided: '{specific_instructions}'"})
+        else:
+            process_log.append({'step': "Input Parameters", 'detail': "No specific instructions provided."})
 
         # 1. Get Grant Details
         grant_details = None
+        process_log.append({'step': "Grant Details Retrieval", 'detail': f"Attempting to fetch grant ID: {grant_id}."})
         try:
             grant_details = self.data_manager.get_grant_opportunity(grant_id)
             if not grant_details:
-                print(f"[Orchestrator ERROR] Grant with ID {grant_id} not found. Aborting writing pipeline.")
-                return
-            # Use .get for safer access in log, though we just checked grant_details exists
-            print(f"[Orchestrator LOG] Retrieved grant details for '{grant_details.get('grant_title', 'N/A')}'.")
+                msg = f"Grant with ID {grant_id} not found. Aborting writing pipeline."
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': "Grant Details Retrieval", 'detail': msg, 'status': 'Error'})
+                return process_log
+            
+            grant_title = grant_details.get('grant_title', 'N/A')
+            print(f"[Orchestrator LOG] Retrieved grant details for '{grant_title}'.")
+            process_log.append({'step': "Grant Details Retrieval", 
+                                'detail': f"Retrieved grant details for '{grant_title}'.", 
+                                'status': 'Success'})
         except Exception as e:
-            print(f"[Orchestrator ERROR] Failed to retrieve grant details for ID {grant_id}: {e}")
-            return
+            msg = f"Failed to retrieve grant details for ID {grant_id}: {e}"
+            print(f"[Orchestrator ERROR] {msg}")
+            process_log.append({'step': "Grant Details Retrieval", 'detail': msg, 'status': 'Error'})
+            return process_log
 
         # 2. Get Organization Profile
         org_profile = None
+        process_log.append({'step': "Organization Profile Retrieval", 'detail': "Attempting to fetch organization profile."})
         try:
             org_profile = self.data_manager.get_organization_profile()
             if not org_profile:
-                print(f"[Orchestrator ERROR] Organization profile not found. Aborting writing pipeline.")
-                return
-            # Use .get for safer access in log
-            print(f"[Orchestrator LOG] Retrieved organization profile: '{org_profile.get('name', 'N/A')}'.")
+                msg = f"Organization profile not found. Aborting writing pipeline."
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': "Organization Profile Retrieval", 'detail': msg, 'status': 'Error'})
+                return process_log
+            
+            org_name = org_profile.get('name', 'N/A')
+            print(f"[Orchestrator LOG] Retrieved organization profile: '{org_name}'.")
+            process_log.append({'step': "Organization Profile Retrieval", 
+                                'detail': f"Retrieved organization profile: '{org_name}'.", 
+                                'status': 'Success'})
         except Exception as e:
-            print(f"[Orchestrator ERROR] Failed to retrieve organization profile: {e}")
-            return
+            msg = f"Failed to retrieve organization profile: {e}"
+            print(f"[Orchestrator ERROR] {msg}")
+            process_log.append({'step': "Organization Profile Retrieval", 'detail': msg, 'status': 'Error'})
+            return process_log
 
         # 3. Draft Section (Mock)
         draft_content = None
+        log_draft_step = f"Drafting Section (Mock GrantScribe): {section_name}"
+        process_log.append({'step': log_draft_step, 
+                            'detail': f"Calling _mock_grantscribe_draft. Instructions: '{specific_instructions if specific_instructions else 'None'}'"})
         try:
+            # Note: _mock_grantscribe_draft currently doesn't use specific_instructions, but we log that it was passed.
             draft_content = self._mock_grantscribe_draft(grant_details, org_profile, section_name)
             print(f"[Orchestrator LOG] Draft for section '{section_name}': '{draft_content[:100]}...'")
+            process_log.append({'step': log_draft_step, 
+                                'detail': "Draft content generated.", 
+                                'output_summary': f"Draft length: {len(draft_content)} chars.",
+                                'status': 'Success'})
         except Exception as e:
-            print(f"[Orchestrator ERROR] Error in _mock_grantscribe_draft for section '{section_name}': {e}")
-            # draft_content remains None
+            msg = f"Error in _mock_grantscribe_draft for section '{section_name}': {e}"
+            print(f"[Orchestrator ERROR] {msg}")
+            process_log.append({'step': log_draft_step, 'detail': msg, 'status': 'Error'})
+            # draft_content remains None, proceed to save what we have (which might be nothing) or log pipeline end.
 
         # 4. Review Draft (Mock)
         feedback = None
+        log_review_step = f"Reviewing Draft (Mock RefineBot): {section_name}"
         if draft_content is not None:
+            process_log.append({'step': log_review_step, 'detail': "Calling _mock_refinebot_review."})
             try:
                 feedback = self._mock_refinebot_review(draft_content)
                 print(f"[Orchestrator LOG] Feedback for section '{section_name}': '{feedback}'")
+                process_log.append({'step': log_review_step, 
+                                    'detail': "Feedback generated.",
+                                    'output_summary': f"Feedback length: {len(feedback)} chars.",
+                                    'status': 'Success'})
             except Exception as e:
-                print(f"[Orchestrator ERROR] Error in _mock_refinebot_review for section '{section_name}': {e}")
+                msg = f"Error in _mock_refinebot_review for section '{section_name}': {e}"
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': log_review_step, 'detail': msg, 'status': 'Error'})
                 # feedback remains None
         else:
             feedback = "No draft content to review due to prior error." # As per instruction
             print(f"[Orchestrator LOG] Section '{section_name}': {feedback}")
-
+            process_log.append({'step': log_review_step, 'detail': feedback, 'status': 'Skipped'})
 
         # 5. Save Section Draft
+        log_save_step = f"Saving Section Draft: {section_name}"
         if draft_content is not None:
+            process_log.append({'step': log_save_step, 'detail': f"Attempting to save draft for grant ID {grant_id}."})
             try:
                 self.data_manager.save_section_draft(
                     grant_opportunity_id=grant_id,
@@ -225,10 +316,21 @@ class Orchestrator:
                     feedback=feedback if feedback else '' # Ensure feedback is not None
                 )
                 print(f"[Orchestrator LOG] Saved draft for section '{section_name}' of grant ID {grant_id} with feedback.")
+                process_log.append({'step': log_save_step, 
+                                    'detail': "Successfully saved draft and feedback to database.", 
+                                    'status': 'Success'})
             except Exception as e:
-                print(f"[Orchestrator ERROR] Error saving draft for section '{section_name}', grant ID {grant_id}: {e}")
+                msg = f"Error saving draft for section '{section_name}', grant ID {grant_id}: {e}"
+                print(f"[Orchestrator ERROR] {msg}")
+                process_log.append({'step': log_save_step, 'detail': msg, 'status': 'Error'})
+        else:
+            process_log.append({'step': log_save_step, 
+                                'detail': "Skipped saving draft as no content was generated due to prior error.", 
+                                'status': 'Skipped'})
         
         print(f"[Orchestrator LOG] run_writing_pipeline for grant ID {grant_id}, section '{section_name}' completed.")
+        process_log.append({'step': "Pipeline End", 'detail': "Writing pipeline finished."})
+        return process_log
 
     def start_grant_application_flow(self, organization_profile, grant_opportunity):
         # Placeholder for workflow logic
