@@ -1,6 +1,9 @@
 from openai import OpenAI
 import os # For __main__ block, to load .env
 
+from ..core.graph_state import GrantMasterState
+# WriterAgent class is defined in the same file.
+
 class WriterAgent:
     def __init__(self, openai_client, model="gpt-4o"): # Defaulting to a more advanced model
         self.openai_client = openai_client
@@ -150,3 +153,85 @@ if __name__ == '__main__':
             print(f"An error occurred during WriterAgent demo setup or execution: {e}")
             import traceback
             traceback.print_exc()
+
+def node_draft_section(state: GrantMasterState, agent: WriterAgent) -> dict:
+    """
+    LangGraph node to draft a specific grant section using WriterAgent.
+    It incorporates grant details, organization profile, section name,
+    and any available editor feedback or specific instructions from the state.
+    Updates state with the draft, iteration count, and logs.
+    """
+    print("Attempting node_draft_section...")
+    log_messages = list(state.get("log_messages", []))
+
+    current_grant_details = state.get("current_grant_details")
+    organization_profile = state.get("organization_profile")
+    current_section_name = state.get("current_section_name")
+    editor_feedback = state.get("editor_feedback") # Optional
+    specific_instructions_from_state = state.get("specific_instructions") # Optional
+
+    if not current_grant_details or not organization_profile or not current_section_name:
+        error_message = "Cannot draft section: Missing current_grant_details, organization_profile, or current_section_name in state."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "log_messages": log_messages,
+            "current_draft_content": "", # Ensure key exists
+            "iteration_count": state.get("iteration_count", 0) # Pass through iteration count
+        }
+
+    # Combine editor_feedback and specific_instructions from state to pass to the agent
+    combined_instructions = ""
+    if specific_instructions_from_state:
+        combined_instructions += specific_instructions_from_state
+    if editor_feedback:
+        if combined_instructions: # Add a separator if specific_instructions already exist
+            combined_instructions += "\n\n--- Previous Editor Feedback ---\n"
+        combined_instructions += editor_feedback
+    
+    if not combined_instructions:
+        combined_instructions = '' # Ensure it's an empty string if nothing was provided
+
+    new_iteration_count = state.get('iteration_count', 0) + 1
+    node_error_message = None
+    draft_text = ""
+
+    try:
+        print(f"Calling WriterAgent.draft_section for section: '{current_section_name}', Iteration: {new_iteration_count}")
+        draft_text = agent.draft_section(
+            grant_opportunity_details=current_grant_details,
+            org_profile=organization_profile,
+            section_name=current_section_name,
+            specific_instructions=combined_instructions
+        )
+
+        if draft_text.startswith("// Error"):
+            agent_error = f"WriterAgent failed to draft section '{current_section_name}': {draft_text}"
+            print(agent_error)
+            log_messages.append(agent_error)
+            node_error_message = agent_error # Set node error from agent error
+            draft_text = "" # Clear draft text on agent error
+        else:
+            log_messages.append(f"Drafted section (Iteration {new_iteration_count}): {current_section_name}.")
+            # Clear editor_feedback from state if it was successfully incorporated
+            # This is a choice: do we want to clear it here or let the graph logic handle it?
+            # For now, let's assume this node is responsible for clearing it after use.
+            # However, returning it as None in the output dict is how state is changed.
+            # The prompt doesn't explicitly say to clear editor_feedback, so we won't add it to output dict.
+            # If it needs to be cleared, the graph would route to a state update node or this node would return 'editor_feedback': None.
+
+    except Exception as e:
+        unexpected_error = f"Unexpected error in node_draft_section for '{current_section_name}': {str(e)}"
+        print(unexpected_error)
+        log_messages.append(unexpected_error)
+        node_error_message = unexpected_error
+        draft_text = "" # Clear draft text on unexpected error
+
+    return {
+        "current_draft_content": draft_text,
+        "iteration_count": new_iteration_count,
+        "log_messages": log_messages,
+        "error_message": node_error_message
+        # If editor_feedback needs to be cleared, add: 'editor_feedback': None
+    }
