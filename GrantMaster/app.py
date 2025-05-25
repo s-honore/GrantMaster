@@ -6,12 +6,8 @@ from dotenv import load_dotenv
 # or that GrantMaster is in PYTHONPATH.
 # If app.py is in GrantMaster/, and core/ and agents/ are also in GrantMaster/
 # then these imports should work.
-from core.orchestrator import Orchestrator
+from core.graph_orchestrator import GraphOrchestrator
 from core.data_manager import DataManager # Though Orchestrator creates its own, it's good for type hints or direct use if ever needed.
-from agents.researcher_agent import WebSleuthAgent # WebSleuthAgent is in researcher_agent.py
-from agents.analyst_agent import AnalystAgent
-from agents.writer_agent import WriterAgent
-from agents.editor_agent import EditorAgent
 
 # --- Page Config (should be the first Streamlit command) ---
 st.set_page_config(page_title="GrantMaster AI", layout="wide")
@@ -42,69 +38,37 @@ if not OPENAI_API_KEY:
 # else:
     # print("OPENAI_API_KEY loaded successfully for app.py.") # For debugging
 
+# --- Initialize GraphOrchestrator ---
+if 'graph_orchestrator' not in st.session_state:
+    try:
+        st.session_state.graph_orchestrator = GraphOrchestrator()
+        st.success("GraphOrchestrator initialized successfully!") 
+        # print("GraphOrchestrator initialized and stored in session state.") # For debugging
+    except Exception as e:
+        st.error(f"CRITICAL ERROR: Failed to initialize GraphOrchestrator: {e}")
+        # import traceback # For debugging
+        # print(f"Critical error initializing GraphOrchestrator: {e}\n{traceback.format_exc()}") # For debugging
+        st.stop() # Stop the app if GraphOrchestrator fails to initialize
 
-# --- Initialize Orchestrator and Agents ---
-# Orchestrator's __init__ handles its own DataManager and OpenAI client setup.
-# It also loads .env internally, but loading here ensures Streamlit has early access if needed
-# and provides a clear stop point if the key isn't found for the app itself.
-orchestrator = None
-research_agent = None
-analysis_agent = None
-writing_agent = None
-review_agent = None # For EditorAgent
-
-try:
-    # db_name can be configured here if needed, e.g. for different environments
-    # orchestrator = Orchestrator(db_name='grantmaster_prod.db') 
-    orchestrator = Orchestrator() # Uses default 'grantmaster.db' and loads API key
-    
-    if not orchestrator.openai_client:
-        # This check is important because Orchestrator's __init__ might fail to create openai_client
-        # if the API key wasn't found by its internal dotenv loading.
-        st.error("CRITICAL ERROR: OpenAI client not initialized in Orchestrator. "
-                 "This usually means the OPENAI_API_KEY was not accessible to the Orchestrator. "
-                 "Ensure your .env file is correctly placed and formatted.")
-        # print("Orchestrator's OpenAI client is None after Orchestrator init.") # For debugging
-        st.stop()
-
-    # Initialize agents with the OpenAI client from the Orchestrator
-    research_agent = WebSleuthAgent(openai_client=orchestrator.openai_client)
-    analysis_agent = AnalystAgent(openai_client=orchestrator.openai_client)
-    writing_agent = WriterAgent(openai_client=orchestrator.openai_client)
-    review_agent = EditorAgent(openai_client=orchestrator.openai_client)
-
-    # Register agents with the Orchestrator
-    orchestrator.register_researcher(research_agent)
-    orchestrator.register_analyst(analysis_agent)
-    orchestrator.register_writer(writing_agent)
-    orchestrator.register_editor(review_agent) # 'review_agent' is the attribute name in Orchestrator
-
-    # print("Orchestrator and all agents initialized and registered successfully.") # For debugging
-    # st.success("GrantMaster AI system initialized successfully!") # Optional: early success message
-
-except ValueError as ve: # Catch ValueError from Orchestrator if API key is missing
-    st.error(f"Initialization Error: {ve}. Please check your OPENAI_API_KEY setup in the .env file.")
-    # print(f"ValueError during Orchestrator/Agent init: {ve}") # For debugging
-    st.stop()
-except Exception as e:
-    st.error(f"An unexpected error occurred during system initialization: {e}")
-    # import traceback # For debugging
-    # print(f"Unexpected error during Orchestrator/Agent init: {e}
-# {traceback.format_exc()}") # For debugging
+# Ensure it's available for use
+graph_orchestrator = st.session_state.graph_orchestrator
+if not graph_orchestrator:
+    # This case should ideally be caught by the st.stop() above, but as a fallback:
+    st.error("GraphOrchestrator not available. The application cannot continue.")
     st.stop()
 
 # --- Streamlit UI Starts Here ---
 st.title("GrantMaster AI")
 
-# Ensure orchestrator is initialized before using it for UI state or actions
-if orchestrator and orchestrator.data_manager:
+# Ensure graph_orchestrator is initialized before using it for UI state or actions
+if graph_orchestrator and graph_orchestrator.data_manager:
     st.header("Organization Profile")
 
     # Attempt to load existing profile to pre-fill fields
     # Initialize with empty strings if no profile exists or an error occurs
     profile_data = {}
     try:
-        retrieved_profile = orchestrator.data_manager.get_organization_profile()
+        retrieved_profile = graph_orchestrator.data_manager.get_organization_profile()
         if retrieved_profile:
             profile_data = retrieved_profile
             # print("Loaded existing organization profile for UI.") # For debugging
@@ -166,8 +130,8 @@ if orchestrator and orchestrator.data_manager:
             st.error("Organization Name is required to save the profile.")
         else:
             try:
-                # Call save_organization_profile using the orchestrator's data_manager
-                orchestrator.data_manager.save_organization_profile(
+                # Call save_organization_profile using the graph_orchestrator's data_manager
+                graph_orchestrator.data_manager.save_organization_profile(
                     name=st.session_state.org_name,
                     mission=st.session_state.org_mission,
                     projects=st.session_state.org_projects,
@@ -184,14 +148,14 @@ if orchestrator and orchestrator.data_manager:
                 # print(f"Error saving profile from UI: {e}
 # {traceback.format_exc()}") # For debugging
 else:
-    st.info("System is initializing or an error occurred. Orchestrator not available for UI rendering.")
-    # print("Orchestrator or its data_manager is None when trying to render UI.") # For debugging
+    st.info("System is initializing or an error occurred. GraphOrchestrator not available for UI rendering.")
+    # print("GraphOrchestrator or its data_manager is None when trying to render UI.") # For debugging
 
 # Add a divider for visual separation before any future sections
 st.divider()
 
-# Ensure orchestrator is available before attempting to add more UI
-if orchestrator and orchestrator.data_manager:
+# Ensure graph_orchestrator is available before attempting to add more UI
+if graph_orchestrator and graph_orchestrator.data_manager:
     st.header("Grant Research")
 
     # Use unique keys for inputs in different sections if names are similar
@@ -224,11 +188,11 @@ if orchestrator and orchestrator.data_manager:
 
         # Retrieve organization profile
         org_profile = None
-        # This check for orchestrator and data_manager is already done before the header
+        # This check for graph_orchestrator and data_manager is already done before the header
         # but good to be defensive if this code block were ever moved.
-        if orchestrator and orchestrator.data_manager: 
+        if graph_orchestrator and graph_orchestrator.data_manager: 
             try:
-                org_profile = orchestrator.data_manager.get_organization_profile()
+                org_profile = graph_orchestrator.data_manager.get_organization_profile()
             except Exception as e:
                 st.error(f"Error fetching organization profile: {e}")
                 st.stop()
@@ -245,134 +209,102 @@ if orchestrator and orchestrator.data_manager:
             "password": st.session_state.research_password_input
         }
 
-        with st.spinner("Performing research and analysis... This may take a few moments. Please wait."):
-            try:
-                # Call the orchestrator's research pipeline
-                # This is a blocking call. Streamlit will show the spinner until it's done.
-                orchestrator.run_research_pipeline(
-                    st.session_state.research_url_input, # Use the key from st.text_input
-                    login_credentials
-                )
-                st.session_state.research_pipeline_completed = True # Flag to display results
-                st.session_state.research_error = None # Clear any previous error
-                
-                # ADD THIS MOCK LOG CREATION:
-                mock_research_log = [
-                    f"Called Orchestrator's run_research_pipeline (actual log to be implemented in Orchestrator).",
-                    f"Input URL: {st.session_state.research_url}", # Using research_url as research_url_input might not be in session_state here if not set by text_input yet
-                    "Simulated call to WebSleuth agent for website content extraction.",
-                    "Simulated processing of extracted content.",
-                    "Looping through potential grants identified:",
-                    "  - Simulated call to OpportunityMatcher agent for Grant Alpha.",
-                    "  - Simulated saving/updating Grant Alpha via DataManager.",
-                    "  - Simulated call to OpportunityMatcher agent for Grant Beta.",
-                    "  - Simulated saving/updating Grant Beta via DataManager."
-                ]
-                st.session_state.research_process_log = mock_research_log
-                # print("Mock research process log created.") # For debugging
-                # print("Research pipeline completed successfully via UI.") # For debugging
-                
-            except Exception as e:
-                st.error(f"An error occurred during the research pipeline: {e}")
-                st.session_state.research_pipeline_completed = False
-                st.session_state.research_error = str(e)
-                # import traceback # For debugging
-                # print(f"Error in research pipeline from UI: {e}
-# {traceback.format_exc()}") # For debugging
-
-    # The display of results will be handled in the next step/subtask,
-    # potentially checking st.session_state.research_pipeline_completed.
-    # For now, this subtask focuses on the button click logic and pipeline execution.
-    # The st.divider() and placeholder for "Grant Writing" section should remain after this block.
-
-    if 'research_pipeline_completed' in st.session_state:
-        if st.session_state.research_pipeline_completed:
-            st.success("Research pipeline completed successfully!") # Moved here to be above results
-            
-            # Fetch and display analyzed grants
-            try:
-                if orchestrator and orchestrator.data_manager:
-                    all_grants = orchestrator.data_manager.get_all_grant_opportunities()
-                    # The research_pipeline mock sets status like 'analyzed_strong_match', 'analyzed_needs_review'
-                    analyzed_grants = [g for g in all_grants if g.get('status', '').startswith('analyzed_')]
-
-                    if not analyzed_grants and all_grants:
-                        st.info("No grants with a status starting 'analyzed_' found. "
-                                "Displaying all grants returned by the research pipeline for review (mock data may not have 'analyzed' status yet).")
-                        # This fallback is useful if the mock pipeline doesn't perfectly set the 'analyzed' status
-                        # or if we want to see all results during development.
-                        # In production, might only show strictly 'analyzed_' grants.
-                        analyzed_grants_to_display = all_grants
-                    elif not analyzed_grants:
-                        st.info("No grants were found or analyzed by the research pipeline.")
-                        analyzed_grants_to_display = []
-                    else:
-                        analyzed_grants_to_display = analyzed_grants
+        # Ensure org_profile is not None and contains essential data before proceeding
+        if org_profile and org_profile.get('name'):
+            with st.spinner("Performing research... This may take some time."):
+                try:
+                    # Access graph_orchestrator from session_state
+                    current_graph_orchestrator = st.session_state.graph_orchestrator
                     
-                    if analyzed_grants_to_display:
-                        st.subheader("Research Results: Identified & Analyzed Grants")
-                        for i, grant in enumerate(analyzed_grants_to_display):
-                            st.markdown(f"---") # Visual separator for each grant
-                            st.markdown(f"#### {i+1}. {grant.get('grant_title', 'N/A')}")
-                            
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.markdown(f"**Funder:** {grant.get('funder', 'N/A')}")
-                                st.markdown(f"**Deadline:** {grant.get('deadline', 'N/A')}")
-                            with col2:
-                                st.markdown(f"**Suitability Score:** {grant.get('suitability_score', 'N/A')}/10")
-                                st.markdown(f"**Status:** {grant.get('status', 'N/A')}")
-                            
-                            st.markdown(f"**Rationale/Analysis Notes:** {grant.get('analysis_notes', 'N/A')}")
+                    final_state_dict = current_graph_orchestrator.run_research_workflow(
+                        research_website_url=st.session_state.research_url_input, # type: ignore
+                        research_login_credentials=login_credentials,
+                        organization_profile=org_profile
+                    )
+                    st.session_state.research_workflow_state = final_state_dict
+                    # print("Research workflow finished. Final state stored.") # For debugging
+                    
+                    # Error message from the workflow itself is displayed here
+                    if final_state_dict.get('error_message'):
+                        st.error(f"Research workflow completed with an error: {final_state_dict['error_message']}")
+                    else:
+                        st.success("Research workflow completed successfully!")
 
-                            with st.expander("View Full Grant Details"):
-                                st.markdown(f"**Description:** {grant.get('description', 'N/A')}")
-                                st.markdown(f"**Eligibility:** {grant.get('eligibility', 'N/A')}")
-                                st.markdown(f"**Focus Areas:** {grant.get('focus_areas', 'N/A')}")
-                                if grant.get('link'):
-                                    st.markdown(f"**Link:** {grant.get('link')}")
-                                if grant.get('raw_research_data'):
-                                    st.text_area("Raw Research Data", value=grant.get('raw_research_data'), height=150, disabled=True, key=f"raw_data_{grant.get('id', i)}")
+                except Exception as e:
+                    st.error(f"An unexpected error occurred while running the research workflow: {e}")
+                    # Ensure state is set with error info for consistent display
+                    st.session_state.research_workflow_state = {
+                        "error_message": str(e), 
+                        "log_messages": [f"Application error during research workflow: {str(e)}"], 
+                        "extracted_grant_opportunities": []
+                    }
+                    # import traceback # For debugging
+                    # print(f"Exception in app.py calling research workflow: {e}\n{traceback.format_exc()}") # For debugging
+        # else: # This else was for the org_profile check, which is now implicitly handled by the outer structure
+             # The initial error for missing/incomplete org_profile is already handled before this block.
+             # st.error("Organization Profile is not set or incomplete. Please save it first.") # This line is moved up
+
+    # --- Display logic (outside button click, uses st.session_state.research_workflow_state) ---
+    if 'research_workflow_state' in st.session_state:
+        state = st.session_state.research_workflow_state
+        
+        # Display Error if any from the workflow itself 
+        # This is mostly handled by the button logic's st.error, but kept if state is set by other means
+        # or if we want to ensure it's always checked when state exists.
+        # However, to avoid duplicate messages, we rely on the button click's error reporting.
+        # If state.get('error_message') and not already_shown_error_from_button_click:
+        #    st.error(f"Workflow Error: {state.get('error_message')}")
+    
+        # Display Extracted Grant Opportunities
+        opportunities = state.get('extracted_grant_opportunities', [])
+        if opportunities:
+            st.subheader("Research Results: Identified Grant Opportunities")
+            for i, grant in enumerate(opportunities): # Ensure grant is a dictionary
+                st.markdown(f"---") # Visual separator for each grant
+                title = grant.get('grant_title', 'N/A') if isinstance(grant, dict) else 'Invalid grant format'
+                st.markdown(f"#### {i+1}. {title}")
+                
+                if isinstance(grant, dict):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"**Funder:** {grant.get('funder', 'N/A')}")
+                        st.markdown(f"**Deadline:** {grant.get('deadline', 'N/A')}")
+                    with col2:
+                        st.markdown(f"**Suitability Score:** {grant.get('suitability_score', 'N/A')}/10")
+                        st.markdown(f"**Status:** {grant.get('status', 'Pending Analysis')}")
+                    
+                    if grant.get('analysis_notes'):
+                        st.markdown(f"**Rationale/Analysis Notes:** {grant.get('analysis_notes', 'N/A')}")
+
+                    with st.expander("View Full Grant Details"):
+                        st.markdown(f"**Description:** {grant.get('description', 'N/A')}")
+                        st.markdown(f"**Eligibility:** {grant.get('eligibility_criteria', 'N/A')}")
+                        st.markdown(f"**Focus Areas:** {grant.get('focus_areas', 'N/A')}")
+                        if grant.get('website_link'):
+                            st.markdown(f"**Link:** {grant.get('website_link')}")
+                        # Consider if 'raw_research_data' is useful here or too verbose
+                        # if grant.get('raw_research_data'):
+                        #     st.text_area("Raw Research Data", value=grant.get('raw_research_data'), height=150, disabled=True, key=f"raw_data_state_{grant.get('grant_id', i if isinstance(grant, dict) else str(i))}")
                 else:
-                    st.warning("Orchestrator or DataManager is not available to fetch grant results.")
-            
-            except Exception as e:
-                st.error(f"Error displaying grant opportunities: {e}")
-                # import traceback # For debugging
-                # print(f"Error displaying results: {e}
-# {traceback.format_exc()}") # For debugging
+                    st.warning("An item in extracted opportunities was not in the expected format.")
 
-        elif st.session_state.get('research_error'): # Check if there was an error flagged
-            # The error message from the pipeline execution is already displayed by st.error()
-            # This block is if we want to add more info or keep the error message persistent
-            # st.error(f"Research pipeline failed: {st.session_state.research_error}") # Redundant if already shown
-            pass # Error already shown by the button logic's try-except block
+        elif not state.get('error_message'): # Only show if no error and no opps
+            st.info("Research workflow completed, but no grant opportunities were extracted or returned.")
 
-        # Clean up session state flags for next run, if desired, or keep them for inspection
-        # For example, could add a "Clear Results" button that resets these:
-        # if st.button("Clear Research Results"):
-        #     st.session_state.research_pipeline_completed = False
-        #     st.session_state.research_error = None
-        #     st.rerun()
-
-    # --- Display Process Log (Grant Research) ---
-    # This should be placed after the results of the research pipeline are displayed.
-    if 'research_process_log' in st.session_state and st.session_state.research_process_log:
-        with st.expander("Process Log & Reasoning (Grant Research)", expanded=False):
-            for log_entry in st.session_state.research_process_log:
-                if isinstance(log_entry, tuple) and len(log_entry) == 2:
-                    st.markdown(f"**{log_entry[0]}:** {log_entry[1]}")
-                elif isinstance(log_entry, dict):
-                    st.markdown(f"**{log_entry.get('step','Log')}:** {log_entry.get('detail','N/A')}")
-                    if log_entry.get('output_summary'):
-                         st.caption(f"Output: {log_entry.get('output_summary')}")
-                else:
-                    st.text(str(log_entry))
-            if st.button("Clear Research Log", key="clear_research_log_button"):
-                st.session_state.research_process_log = []
-                st.rerun()
-
-    # The main st.divider() for the "Grant Research" section should be after this result display logic.
+        # Display Log Messages
+        with st.expander("View Research Process Log", expanded=False):
+            log_messages = state.get('log_messages', [])
+            if log_messages:
+                for entry in log_messages:
+                    st.text(entry) 
+            else:
+                st.info("No log messages available for this research run.")
+        
+        # Button to clear the current research results and log
+        if st.button("Clear Research Results & Log", key="clear_research_state_button"):
+            if 'research_workflow_state' in st.session_state:
+                del st.session_state.research_workflow_state
+            st.rerun()
 
     # Add another divider for visual separation before any future sections
     st.divider()
@@ -381,9 +313,9 @@ if orchestrator and orchestrator.data_manager:
     # st.header("Grant Application Writing")
     # ...
 
-    # Ensure orchestrator is available before attempting to add more UI
+    # Ensure graph_orchestrator is available before attempting to add more UI
     # This check is repeated for modularity, though the outer 'if' already covers it.
-    # If orchestrator and orchestrator.data_manager: (This line is part of the provided code, let's use it)
+    # If graph_orchestrator and graph_orchestrator.data_manager: (This line is part of the provided code, let's use it)
     st.header("Grant Application Writing")
 
     # --- Grant Selection Dropdown ---
@@ -391,7 +323,7 @@ if orchestrator and orchestrator.data_manager:
     grant_options = {"Select a grant...": None} # Default option
 
     try:
-        all_grants = orchestrator.data_manager.get_all_grant_opportunities()
+        all_grants = graph_orchestrator.data_manager.get_all_grant_opportunities()
         if all_grants:
             # Filter for grants that have been through some analysis
             # (status starts with 'analyzed_' or has a suitability_score)
@@ -465,104 +397,111 @@ if orchestrator and orchestrator.data_manager:
             st.stop()
 
         st.info(f"Drafting section: '{st.session_state.section_name_to_draft}' for grant ID: {selected_grant_id_for_writing}")
-        with st.spinner(f"Drafting section '{st.session_state.section_name_to_draft}'... This may take a few moments. Please wait."):
-            try:
-                # Call the orchestrator's writing pipeline
-                # For now, this pipeline doesn't return a log. We'll simulate one.
-                orchestrator.run_writing_pipeline(
-                    selected_grant_id_for_writing,
-                    st.session_state.section_name_to_draft,
-                    st.session_state.specific_instructions_for_draft # Pass specific instructions
-                )
-                
-                # Simulate process log for now (Phase 1)
-                mock_writing_log = [
-                    f"Called Orchestrator's run_writing_pipeline (actual log to be implemented in Orchestrator).",
-                    f"Input: Grant ID {selected_grant_id_for_writing}, Section: '{st.session_state.section_name_to_draft}'",
-                    f"Specific Instructions: '{st.session_state.specific_instructions_for_draft if st.session_state.specific_instructions_for_draft else 'None'}'",
-                    "Simulated call to GrantScribe agent for drafting.",
-                    "Simulated call to RefineBot agent for initial feedback (if any was part of mock).",
-                    "Section draft and any initial feedback saved by DataManager."
-                ]
-                st.session_state.writing_process_log = mock_writing_log
-                
-                # Fetch the latest draft to display it
-                # The run_writing_pipeline saves the draft, so we fetch it here.
-                # The get_section_draft method should ideally get the latest version by default.
-                drafted_section_info = orchestrator.data_manager.get_section_draft(
-                    grant_opportunity_id=selected_grant_id_for_writing,
-                    section_name=st.session_state.section_name_to_draft
-                    # version=None # To get the latest
-                )
-                st.session_state.current_draft_info = drafted_section_info # Store for display
-                st.session_state.drafting_completed = True # Flag for display logic
-                st.session_state.drafting_error = None
+        # Access graph_orchestrator from session_state
+        current_graph_orchestrator = st.session_state.graph_orchestrator # Use a different variable name to avoid conflict with global graph_orchestrator
 
-                # print(f"Drafting pipeline completed via UI. Fetched draft: {drafted_section_info is not None}") # For debugging
+        # Fetch Organization Profile
+        org_profile = None
+        try:
+            org_profile = current_graph_orchestrator.data_manager.get_organization_profile()
+            if not org_profile or not org_profile.get('name'):
+                st.error("Organization Profile is not set or is incomplete. Please save it first.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Error fetching organization profile: {e}")
+            st.stop()
 
-            except Exception as e:
-                st.error(f"An error occurred during the drafting pipeline: {e}")
-                st.session_state.drafting_completed = False
-                st.session_state.drafting_error = str(e)
-                st.session_state.current_draft_info = None
-                st.session_state.writing_process_log = [f"Error during drafting: {e}"]
-                # import traceback # For debugging
-                # print(f"Error in writing pipeline from UI: {e}
-# {traceback.format_exc()}") # For debugging
+        # Fetch Current Grant Details
+        current_grant_details = None
+        try:
+            current_grant_details = current_graph_orchestrator.data_manager.get_grant_opportunity_by_id(selected_grant_id_for_writing)
+            if not current_grant_details:
+                st.error(f"Could not retrieve details for grant ID: {selected_grant_id_for_writing}.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Error fetching grant details: {e}")
+            st.stop()
+        
+        # Proceed if all inputs are valid
+        if org_profile and current_grant_details: # This check is somewhat redundant due to st.stop() above but good for clarity
+            section_name_to_draft_val = st.session_state.section_name_to_draft # Capture value before spinner
+            with st.spinner(f"Running writing workflow for section '{section_name_to_draft_val}'..."):
+                try:
+                    final_state_dict = current_graph_orchestrator.run_writing_workflow(
+                        current_grant_details=current_grant_details,
+                        organization_profile=org_profile,
+                        section_name=section_name_to_draft_val
+                    )
+                    st.session_state.writing_workflow_state = final_state_dict
+                    # print("Writing workflow finished. Final state stored.") # For debugging
 
-    # The display of the draft and the process log will be handled in the next subtask (Step 3 of Phase 1).
-    # The st.divider() for this section should be AFTER the display logic.
+                    if final_state_dict.get('error_message'):
+                        st.error(f"Writing workflow completed with an error: {final_state_dict['error_message']}")
+                    else:
+                        st.success("Writing workflow completed successfully!")
 
-    # --- Display Drafted Section and Feedback ---
-    if 'drafting_completed' in st.session_state:
-        if st.session_state.drafting_completed and st.session_state.get('current_draft_info'):
-            draft_info = st.session_state.current_draft_info
-            st.subheader(f"Drafted Section: {draft_info.get('section_name', 'N/A')}")
-            
-            st.markdown("**Draft Content:**")
+                except Exception as e:
+                    st.error(f"An unexpected error occurred while running the writing workflow: {e}")
+                    st.session_state.writing_workflow_state = {
+                        "error_message": str(e), 
+                        "log_messages": [f"App.py error: {str(e)}"], 
+                        "current_draft_content": "", 
+                        "editor_feedback": ""
+                    }
+                    # import traceback # For debugging
+                    # print(f"Exception in app.py calling writing workflow: {e}\n{traceback.format_exc()}") # For debugging
+
+    # --- Display logic (outside button click, uses st.session_state.writing_workflow_state) ---
+    if 'writing_workflow_state' in st.session_state:
+        state = st.session_state.writing_workflow_state
+        
+        # Display Draft Content
+        # Use section name from state if available, otherwise fallback to the one from input field
+        section_name_display = state.get('current_section_name', st.session_state.get('section_name_to_draft', 'N/A'))
+        st.subheader(f"Output for Section: {section_name_display}") 
+        
+        draft_content = state.get('current_draft_content', '')
+        st.text_area(
+            label="Draft Content",
+            value=draft_content if draft_content else "No draft content available from workflow.",
+            height=300,
+            disabled=True, # Display only
+            key="writing_draft_display_new"
+        )
+
+        # Display Editor Feedback
+        editor_feedback = state.get('editor_feedback', '')
+        if editor_feedback: # Only show if feedback exists
+            st.markdown("**Editor Feedback:**")
             st.text_area(
-                label="Current Draft", # Label made more generic
-                value=draft_info.get('draft_content', 'No content available.'), 
-                height=300, 
-                disabled=True, # Display only, not for editing here
-                key=f"draft_display_{draft_info.get('id', 'new')}" # Unique key
+                label="Feedback on this Draft", # Label is clear enough without repeating "Editor"
+                value=editor_feedback,
+                height=100,
+                disabled=True,
+                key="writing_feedback_display_new"
             )
-            
-            if draft_info.get('feedback'):
-                st.markdown("**Feedback on this Draft:**")
-                st.text_area(
-                    label="Feedback", # Label for feedback
-                    value=draft_info.get('feedback'), 
-                    height=100, 
-                    disabled=True,
-                    key=f"feedback_display_{draft_info.get('id', 'new')}" # Unique key
-                )
-            # else:
-                # st.info("No feedback recorded for this draft version yet.")
+        # else: (No need to explicitly say "no feedback" if the section isn't shown)
 
-        elif st.session_state.get('drafting_error'):
-            # Error message is already displayed by the button logic's try-except block.
-            # This space could be used for more detailed error info if needed.
-            pass
-
-    # --- Display Process Log (Grant Writing) ---
-    if 'writing_process_log' in st.session_state and st.session_state.writing_process_log:
-        with st.expander("Process Log & Reasoning (Grant Writing)", expanded=False):
-            for log_entry in st.session_state.writing_process_log:
-                if isinstance(log_entry, tuple) and len(log_entry) == 2: # For (step, detail) tuples
-                    st.markdown(f"**{log_entry[0]}:** {log_entry[1]}")
-                elif isinstance(log_entry, dict): # For more structured logs
-                    st.markdown(f"**{log_entry.get('step','Log')}:** {log_entry.get('detail','N/A')}")
-                    if log_entry.get('output_summary'):
-                         st.caption(f"Output: {log_entry.get('output_summary')}")
-                else: # Default to string
-                    st.text(str(log_entry))
-            # Button to clear the log for this section
-            if st.button("Clear Writing Log", key="clear_writing_log_button"):
-                st.session_state.writing_process_log = []
-                st.session_state.current_draft_info = None # Also clear draft from view
-                st.session_state.drafting_completed = False
-                st.rerun()
+        # Display Log Messages
+        # expanded=True makes the log visible by default after running.
+        with st.expander("View Writing Process Log", expanded=True): 
+            log_messages = state.get('log_messages', [])
+            if log_messages:
+                for entry in log_messages:
+                    st.text(entry) # Or st.markdown for richer text
+            else:
+                st.info("No log messages available for this writing run.")
+        
+        # Button to clear the current writing results and log
+        if st.button("Clear Writing Results & Log", key="clear_writing_state_button"):
+            if 'writing_workflow_state' in st.session_state:
+                del st.session_state.writing_workflow_state
+            st.rerun()
+        
+        # Display Error (if any) from the workflow (already handled by button logic, but can be repeated for safety)
+        # error_msg_from_state = state.get('error_message')
+        # if error_msg_from_state:
+        #    st.error(f"Workflow Error (from state): {error_msg_from_state}")
 
     # Add another divider for visual separation
     st.divider()

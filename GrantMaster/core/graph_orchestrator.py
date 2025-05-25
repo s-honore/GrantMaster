@@ -145,6 +145,86 @@ class GraphOrchestrator:
             # Depending on desired behavior, could re-raise the exception
             # raise
 
+    def run_research_workflow(self, research_website_url: str, research_login_credentials: dict, organization_profile: dict) -> GrantMasterState:
+        """
+        Runs the research workflow with the given parameters.
+        Initializes the state and invokes the compiled graph.
+        """
+        initial_state = GrantMasterState(
+            organization_profile=organization_profile,
+            research_website_url=research_website_url,
+            research_login_credentials=research_login_credentials,
+            authenticated_driver_session=None,
+            extracted_grant_opportunities=[], # Default to empty list
+            current_grant_opportunity_id=None,
+            current_grant_details=None,
+            analysis_results=None,
+            current_section_name=None,
+            current_draft_content=None,
+            editor_feedback=None,
+            iteration_count=0, # Initialized to 0
+            error_message=None,
+            log_messages=['Research workflow started.'], # Initial log message
+            next_node_to_call=None
+        )
+
+        if not self.app:
+            # This check is crucial if graph compilation can fail.
+            # Log an error and potentially return an error state or raise exception.
+            error_msg = "GraphOrchestrator: Workflow application (self.app) is not compiled or available. Cannot run workflow."
+            print(error_msg)
+            # Update initial_state to reflect this critical error before returning
+            initial_state['error_message'] = error_msg
+            initial_state['log_messages'].append(error_msg)
+            return initial_state
+
+        print(f"GraphOrchestrator: Invoking research workflow with initial state: {initial_state}")
+        
+        # Invoke the graph
+        # The type checker might complain about final_state_dict not being GrantMasterState directly,
+        # but LangGraph's invoke typically returns the state dict.
+        final_state_dict = self.app.invoke(initial_state)
+        
+        print(f"GraphOrchestrator: Research workflow finished. Final state: {final_state_dict}")
+        return final_state_dict
+
+    def run_writing_workflow(self, current_grant_details: dict, organization_profile: dict, section_name: str) -> GrantMasterState:
+        """
+        Runs the writing workflow with the given parameters.
+        Initializes the state and invokes the compiled graph.
+        """
+        initial_state = GrantMasterState(
+            organization_profile=organization_profile,
+            research_website_url=None, # Not used in writing workflow
+            research_login_credentials=None, # Not used in writing workflow
+            authenticated_driver_session=None, # Not used directly by writing, but part of state
+            extracted_grant_opportunities=[], # Default to empty list
+            current_grant_opportunity_id=current_grant_details.get("id") if current_grant_details else None, # Extract if available
+            current_grant_details=current_grant_details,
+            analysis_results=None, # Typically generated before writing
+            current_section_name=section_name,
+            current_draft_content=None,
+            editor_feedback=None,
+            iteration_count=0, # Initialized to 0 for a new writing task
+            error_message=None,
+            log_messages=[f'Writing workflow started for section: {section_name}.'], # Initial log
+            next_node_to_call='draft_section' # Explicitly set the starting node for writing
+        )
+
+        if not self.app:
+            error_msg = "GraphOrchestrator: Workflow application (self.app) is not compiled or available. Cannot run writing workflow."
+            print(error_msg)
+            initial_state['error_message'] = error_msg
+            initial_state['log_messages'].append(error_msg)
+            return initial_state
+
+        print(f"GraphOrchestrator: Invoking writing workflow with initial state: {initial_state}")
+        
+        final_state_dict = self.app.invoke(initial_state)
+        
+        print(f"GraphOrchestrator: Writing workflow finished. Final state: {final_state_dict}")
+        return final_state_dict
+
     def handle_error_node(self, state: GrantMasterState) -> dict:
         """
         Handles errors recorded in the state by logging them.
