@@ -5,10 +5,11 @@ from GrantMaster.core.graph_state import GrantMasterState
 # WriterAgent class is defined in the same file.
 
 class WriterAgent:
-    def __init__(self, openai_client, model="gpt-4o"): # Defaulting to a more advanced model
-        self.openai_client = openai_client
-        self.model = model
-        print(f"WriterAgent initialized with model: {self.model}")
+    def __init__(self, api_key: str, model_name="gpt-4o"): # Modified signature, kept gpt-4o as it was specific
+        self.api_key = api_key # Store api_key if needed
+        self.openai_client = OpenAI(api_key=self.api_key) # Initialize client
+        self.model_name = model_name # Using model_name for consistency
+        print(f"WriterAgent initialized with model: {self.model_name}")
 
     def draft_section(self, grant_opportunity_details, org_profile, section_name, specific_instructions=''):
         print(f"WriterAgent: Drafting section '{section_name}' for grant '{grant_opportunity_details.get('grant_title', 'N/A')}'...")
@@ -47,7 +48,7 @@ class WriterAgent:
         print(f"WriterAgent: Sending request to OpenAI API for section '{section_name}'.")
         try:
             completion = self.openai_client.chat.completions.create(
-                model=self.model,
+                model=self.model_name, # Using self.model_name
                 messages=[
                     {"role": "system", "content": "You are an expert AI grant writer. Your task is to draft high-quality content for specific grant proposal sections based on provided context and instructions. Output only the drafted text."},
                     {"role": "user", "content": prompt}

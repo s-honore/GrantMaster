@@ -194,25 +194,28 @@ def perform_website_login(url, username, password, timeout=10):
         return None, internal_logs
 
 class WebSleuthAgent:
-    def __init__(self, openai_client, model="gpt-3.5-turbo"):
-        self.openai_client = openai_client
+    def __init__(self, api_key: str, model="gpt-3.5-turbo"): # Modified signature
+        self.api_key = api_key # Store api_key if needed, or use directly
+        self.openai_client = OpenAI(api_key=self.api_key) # Initialize client
         self.model = model
         # Max characters for page source to feed to LLM (to avoid excessive token usage)
         # This is a very rough limit, actual token limits are more complex.
         self.max_page_source_chars = 15000 # Approx 3k-4k tokens, well within 16k gpt-3.5-turbo context
+        # The print statement in __init__ remains as it's for agent initialization, not per-run logging.
         print(f"WebSleuthAgent initialized with model: {self.model}")
 
     def research_and_extract(self, driver, research_task_description):
-        print(f"WebSleuthAgent: Starting research and extraction. Task: '{research_task_description}'")
+        ws_internal_logs = []
+        ws_internal_logs.append(f"WebSleuthAgent: Starting research and extraction. Task: '{research_task_description}'")
         try:
             page_source = driver.page_source
-            print(f"WebSleuthAgent: Page source obtained (length: {len(page_source)} chars).")
+            ws_internal_logs.append(f"WebSleuthAgent: Page source obtained (length: {len(page_source)} chars).")
         except Exception as e:
-            print(f"WebSleuthAgent ERROR: Could not get page source from driver: {e}")
-            return []
+            ws_internal_logs.append(f"WebSleuthAgent ERROR: Could not get page source from driver: {e}")
+            return [], ws_internal_logs
 
         if len(page_source) > self.max_page_source_chars:
-            print(f"WebSleuthAgent WARNING: Page source is too long ({len(page_source)} chars). Truncating to {self.max_page_source_chars} chars.")
+            ws_internal_logs.append(f"WebSleuthAgent WARNING: Page source is too long ({len(page_source)} chars). Truncating to {self.max_page_source_chars} chars.")
             page_source = page_source[:self.max_page_source_chars]
 
         prompt = f"""
@@ -247,8 +250,9 @@ class WebSleuthAgent:
         {page_source}
         ---
         """
+        ws_internal_logs.append(f"WebSleuthAgent: Sending prompt to LLM (task: '{research_task_description}', HTML source length: {len(page_source)}).")
+        # ws_internal_logs.append(f"WebSleuthAgent: Full prompt (excluding HTML source for brevity): {prompt.split('Page Source to analyze:')[0]}...") # Optional: Log part of the prompt
 
-        print("WebSleuthAgent: Sending request to OpenAI API...")
         try:
             completion = self.openai_client.chat.completions.create(
                 model=self.model,
@@ -260,12 +264,13 @@ class WebSleuthAgent:
                 # response_format={ "type": "json_object" } # Requires GPT-4 Turbo or newer, good for ensuring JSON
             )
             response_content = completion.choices[0].message.content
-            print("WebSleuthAgent: Received response from OpenAI API.")
-        except Exception as e:
-            print(f"WebSleuthAgent ERROR: OpenAI API call failed: {e}")
-            return []
+            ws_internal_logs.append("WebSleuthAgent: Received response from OpenAI API.")
+            ws_internal_logs.append(f"WebSleuthAgent: Raw LLM response snippet (first 500 chars): {response_content[:500]}")
 
-        print(f"WebSleuthAgent: Raw API Response Content: {response_content[:500]}...") # Log snippet
+        except Exception as e:
+            ws_internal_logs.append(f"WebSleuthAgent ERROR: OpenAI API call failed: {e}")
+            return [], ws_internal_logs
+
         try:
             # The response might be a string that looks like a JSON list.
             # Sometimes LLMs wrap JSON in ```json ... ```, try to strip that if present.
@@ -274,23 +279,22 @@ class WebSleuthAgent:
             elif response_content.strip().startswith("```"): # Generic code block
                  response_content = response_content.strip()[3:-3].strip()
 
-
             extracted_grants = json.loads(response_content)
             if not isinstance(extracted_grants, list):
-                print(f"WebSleuthAgent WARNING: LLM response was valid JSON but not a list. Type: {type(extracted_grants)}. Returning as a single item list if it's a dict, else empty.")
+                ws_internal_logs.append(f"WebSleuthAgent WARNING: LLM response was valid JSON but not a list. Type: {type(extracted_grants)}. Returning as a single item list if it's a dict, else empty.")
                 if isinstance(extracted_grants, dict): # Check if it's a dictionary
-                     return [extracted_grants] # Wrap a single dict in a list
-                return [] # Or handle as error / return empty list
+                     return [extracted_grants], ws_internal_logs # Wrap a single dict in a list
+                return [], ws_internal_logs # Or handle as error / return empty list
             
-            print(f"WebSleuthAgent: Successfully parsed JSON response. Found {len(extracted_grants)} item(s).")
-            return extracted_grants
+            ws_internal_logs.append(f"WebSleuthAgent: Successfully parsed JSON response. Found {len(extracted_grants)} item(s).")
+            return extracted_grants, ws_internal_logs
         except json.JSONDecodeError as e:
-            print(f"WebSleuthAgent ERROR: Failed to decode JSON from OpenAI response: {e}")
-            print(f"Problematic response content snippet: {response_content[:500]}") # Log part of the problematic response
-            return []
+            ws_internal_logs.append(f"WebSleuthAgent ERROR: Failed to decode JSON from OpenAI response: {e}")
+            ws_internal_logs.append(f"WebSleuthAgent: ERROR - Failed to decode JSON. Problematic snippet: {response_content[:500]}")
+            return [], ws_internal_logs
         except Exception as e:
-            print(f"WebSleuthAgent ERROR: An unexpected error occurred during JSON parsing or handling: {e}")
-            return []
+            ws_internal_logs.append(f"WebSleuthAgent ERROR: An unexpected error occurred during JSON parsing or handling: {e}")
+            return [], ws_internal_logs
 
 class ResearcherAgent:
     def __init__(self, openai_client):
@@ -422,11 +426,30 @@ def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) ->
     research_task_description = state.get('current_research_task_description', 'Find relevant grant opportunities')
     
     log_messages = list(state.get("log_messages", []))
+    ws_logs = [] # Initialize to capture logs from WebSleuthAgent
+
+    # Log initial page info from the authenticated driver
+    if authenticated_driver: # Only attempt if driver exists
+        try:
+            current_url = authenticated_driver.current_url
+            page_title = authenticated_driver.title
+            log_messages.append(f"Research node: Successfully received authenticated driver. Current URL: {current_url}, Title: {page_title}")
+
+            # Log a snippet of the page source
+            page_html_snippet = authenticated_driver.page_source[:500] # Get first 500 chars
+            log_messages.append(f"Research node: Page source snippet (first 500 chars): {page_html_snippet}")
+
+        except Exception as e_pageinfo:
+            error_detail = f"Error getting initial page info in research node: {type(e_pageinfo).__name__} - {str(e_pageinfo)}"
+            log_messages.append(f"Research node: ERROR: {error_detail}")
+            # Potentially return error state here if this info is critical before proceeding
+            # For now, just log and continue to the main research logic,
+            # as WebSleuthAgent's own error handling will catch further issues.
 
     if not authenticated_driver:
         error_message = "Cannot research, not logged in."
-        print(error_message)
-        log_messages.append("Research skipped: Not logged in.")
+        # print(error_message) # Original print, now handled by log_messages
+        log_messages.append(f"Research node: ERROR - {error_message}") # More consistent logging
         return {
             "error_message": error_message,
             "extracted_grant_opportunities": [], # Ensure this key is present
@@ -434,17 +457,16 @@ def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) ->
         }
 
     try:
-        print(f"Calling WebSleuthAgent.research_and_extract with task: '{research_task_description}'")
+        log_messages.append(f"Research node: Calling WebSleuthAgent.research_and_extract with task: '{research_task_description}'")
         # Assuming 'agent' is an instance of WebSleuthAgent passed in
-        results_list = agent.research_and_extract(authenticated_driver, research_task_description)
+        results_list, ws_logs = agent.research_and_extract(authenticated_driver, research_task_description)
+        log_messages.extend(ws_logs) # Append logs from WebSleuthAgent
         
-        # research_and_extract returns [] on error or if nothing found.
-        # Per plan, we don't set state['error_message'] based on empty results_list here,
-        # as that would require research_and_extract to signal errors more explicitly.
+        # research_and_extract returns ([], ws_logs) on error or if nothing found.
         # The internal logs of research_and_extract will indicate if an error occurred.
         
-        success_message = f"Research complete: Found {len(results_list)} potential opportunities."
-        print(success_message)
+        success_message = f"Research node: WebSleuthAgent finished. Found {len(results_list)} potential opportunities."
+        # print(success_message) # Original print, now handled by log_messages
         log_messages.append(success_message)
         
         return {
@@ -453,10 +475,12 @@ def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) ->
             "error_message": None, # Explicitly set to None on successful execution path
         }
     except Exception as e:
-        # This handles unexpected errors within the node function itself
-        error_message = f"An unexpected error occurred in node_research_and_extract: {str(e)}"
-        print(error_message)
-        log_messages.append(error_message)
+        # This handles unexpected errors within the node function itself,
+        # potentially during the call to research_and_extract or if it raises an unexpected exception.
+        error_message = f"An unexpected error occurred in node_research_and_extract: {type(e).__name__} - {str(e)}"
+        # print(error_message) # Original print, now handled by log_messages
+        log_messages.extend(ws_logs) # Append any logs that might have been returned before exception
+        log_messages.append(f"Research node: ERROR - {error_message}")
         return {
             "extracted_grant_opportunities": [],
             "log_messages": log_messages,
