@@ -19,24 +19,33 @@ from GrantMaster.agents.editor_agent import EditorAgent, node_review_draft
 # print("Attempted to load .env file for GraphOrchestrator (if present)")
 
 class GraphOrchestrator:
-    def __init__(self):
-        # Initialize OpenAI client
-        # It's good practice to ensure the API key is actually found.
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            print("WARNING: OPENAI_API_KEY environment variable not found. OpenAI dependent agents may fail.")
-            # Depending on strictness, could raise an error:
-            # raise ValueError("OPENAI_API_KEY not found. Please set the environment variable.")
-        self.openai_client = OpenAI(api_key=openai_api_key)
+    def __init__(self, api_key: str): # Modified signature
+        self.api_key = api_key # Store api_key
+
+        # Initialize OpenAI client with the passed api_key
+        # This client might still be useful if some components expect a client instance
+        # rather than an API key directly, or for direct calls if needed.
+        self.openai_client = OpenAI(api_key=self.api_key)
 
         # Initialize DataManager
         self.data_manager = DataManager() # Assumes db_name is default or handled by DataManager
 
-        # Initialize Agents
-        self.research_agent = WebSleuthAgent(openai_client=self.openai_client)
-        self.analyst_agent = AnalystAgent(openai_client=self.openai_client)
-        self.writer_agent = WriterAgent(openai_client=self.openai_client)
-        self.editor_agent = EditorAgent(openai_client=self.openai_client)
+        # Define model names (these could be made configurable or passed in later)
+        # Using default values as an example, consistent with some agent defaults.
+        research_model_name = "gpt-3.5-turbo" 
+        analyst_model_name = "gpt-3.5-turbo"
+        writer_model_name = "gpt-3.5-turbo"
+        editor_model_name = "gpt-3.5-turbo"
+
+        # Initialize Agents - passing api_key directly as per subtask instructions.
+        # This assumes Agent constructors will be updated to accept api_key directly.
+        # The variable `self.research_agent` was previously used for WebSleuthAgent.
+        self.research_agent = WebSleuthAgent(api_key=self.api_key, model=research_model_name)
+        self.analyst_agent = AnalystAgent(api_key=self.api_key, model_name=analyst_model_name)
+        self.writer_agent = WriterAgent(api_key=self.api_key, model_name=writer_model_name)
+        self.editor_agent = EditorAgent(api_key=self.api_key, model_name=editor_model_name)
+        # Note: The prompt did not require changing ResearcherAgent if it exists and differs from WebSleuthAgent.
+        # The current code only has self.research_agent assigned to WebSleuthAgent.
         print("GraphOrchestrator: All agents and DataManager initialized.")
 
         # Create StateGraph

@@ -30,6 +30,24 @@ from GrantMaster.core.data_manager import DataManager # Though Orchestrator crea
 # --- Page Config (should be the first Streamlit command) ---
 st.set_page_config(page_title="GrantMaster AI", layout="wide")
 
+# --- Sidebar Configuration for API Key ---
+st.sidebar.header("Configuration")
+api_key_input = st.sidebar.text_input(
+    "OpenAI API Key", 
+    type="password", 
+    key="api_key_input_app",  # Changed key to avoid potential conflict if 'api_key_input' is used elsewhere
+    help="Enter your OpenAI API Key. This will override any environment variable or Streamlit Secret for this session."
+)
+
+# Initialize session_state key if not present
+if 'openai_api_key' not in st.session_state:
+    st.session_state.openai_api_key = ""
+
+# Update session_state if user provides input
+if api_key_input:
+    st.session_state.openai_api_key = api_key_input
+# --- END Sidebar Configuration for API Key ---
+
 # --- Load Environment Variables ---
 # Assuming app.py is in the GrantMaster project root alongside .env
 # If .env is in GrantMaster/ and app.py is also in GrantMaster/, this is direct.
@@ -56,10 +74,38 @@ if not OPENAI_API_KEY:
 # else:
     # print("OPENAI_API_KEY loaded successfully for app.py.") # For debugging
 
+# --- Resolve OpenAI API Key ---
+resolved_api_key = st.session_state.get("openai_api_key", "") # Get from UI input, default to empty string if not set
+
+if not resolved_api_key: # If not provided in UI, try Streamlit Secrets
+    if hasattr(st, 'secrets') and "OPENAI_API_KEY" in st.secrets:
+        resolved_api_key = st.secrets["OPENAI_API_KEY"]
+        print("API Key: Loaded from Streamlit Secrets.") # For backend log confirmation
+    else:
+        # If not in Streamlit Secrets, try environment variable
+        resolved_api_key = os.environ.get("OPENAI_API_KEY")
+        if resolved_api_key:
+            print("API Key: Loaded from environment variable.") # For backend log confirmation
+        else:
+            print("API Key: Not found in UI, Streamlit Secrets, or environment variables.") # For backend log
+
+if not resolved_api_key:
+    st.error("OpenAI API Key not found or provided. Please enter it in the sidebar, or set it as a Streamlit Secret (OPENAI_API_KEY) for deployed apps, or as an environment variable for local development.")
+    st.stop() # Stop execution if no key is found
+else:
+    # Optional: Store resolved key back to session_state if you want it to persist there
+    # even if loaded from secrets/env, but be cautious with sensitive data handling in UI.
+    # For now, resolved_api_key is sufficient for passing to the orchestrator.
+    # Add a success message for user feedback, can be removed later if too verbose.
+    st.sidebar.success("API Key configured.") # Or st.toast if less intrusive
+    print(f"API Key successfully configured for use. Length: {len(resolved_api_key)}") # Backend log
+# --- END Resolve OpenAI API Key ---
+
 # --- Initialize GraphOrchestrator ---
+# Pass the resolved_api_key to the GraphOrchestrator constructor
 if 'graph_orchestrator' not in st.session_state:
     try:
-        st.session_state.graph_orchestrator = GraphOrchestrator()
+        st.session_state.graph_orchestrator = GraphOrchestrator(api_key=resolved_api_key)
         st.success("GraphOrchestrator initialized successfully!") 
         # print("GraphOrchestrator initialized and stored in session state.") # For debugging
     except Exception as e:

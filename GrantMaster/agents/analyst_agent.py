@@ -7,10 +7,11 @@ from GrantMaster.core.data_manager import DataManager
 # AnalystAgent class is defined in the same file, so direct use is fine.
 
 class AnalystAgent:
-    def __init__(self, openai_client, model="gpt-3.5-turbo"):
-        self.openai_client = openai_client
-        self.model = model
-        print(f"AnalystAgent initialized with model: {self.model}")
+    def __init__(self, api_key: str, model_name="gpt-3.5-turbo"): # Modified signature
+        self.api_key = api_key # Store api_key if needed for other methods, or use directly
+        self.openai_client = OpenAI(api_key=self.api_key) # Initialize client
+        self.model_name = model_name # Using model_name for consistency with prompt
+        print(f"AnalystAgent initialized with model: {self.model_name}")
 
     def analyze_suitability(self, grant_info_dict, org_profile_dict):
         print(f"AnalystAgent: Analyzing suitability for grant '{grant_info_dict.get('grant_title', 'N/A')}'...")
@@ -65,12 +66,12 @@ class AnalystAgent:
             # response_format_param = {{ "type": "json_object" }}
             # For older models, rely on prompt engineering for JSON.
             response_format_param = None 
-            if "1106" in self.model or "gpt-4" in self.model: # Basic check if model might support json_object mode
+            if "1106" in self.model_name or "gpt-4" in self.model_name: # Basic check if model might support json_object mode, using self.model_name
                  response_format_param = {{ "type": "json_object" }}
 
 
             completion_args = {{
-                "model": self.model,
+                "model": self.model_name, # Using self.model_name
                 "messages": [
                     {{"role": "system", "content": "You are an expert AI that analyzes grant suitability and returns analysis in a specific JSON format."}},
                     {{"role": "user", "content": prompt}}
