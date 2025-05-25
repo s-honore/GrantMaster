@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time # For explicit waits if necessary, or for post-login observation
 import json # Added for WebSleuthAgent
+from ..core.graph_state import GrantMasterState # Ensure this import is added at the top of the file
 # Consider adding other imports like 'requests' later for actual web interaction.
 
 def perform_website_login(url, username, password, timeout=10):
@@ -249,6 +250,130 @@ class ResearcherAgent:
         ]
         print(f"ResearcherAgent: Mock research complete, returning {len(mock_extracted_data)} item(s).")
         return mock_extracted_data
+
+def node_perform_login(state: GrantMasterState) -> dict:
+    """
+    LangGraph node to perform website login using credentials from the state.
+    Updates the state with the authenticated driver session or an error message.
+    """
+    print("Attempting node_perform_login...")
+    url = state.get("research_website_url")
+    credentials = state.get("research_login_credentials")
+    
+    # Initialize log_messages by copying from state or starting fresh if not present
+    log_messages = list(state.get("log_messages", []))
+
+    if not url or not credentials:
+        error_message = "Login failed: research_website_url or research_login_credentials not found in state."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "authenticated_driver_session": None,
+            "log_messages": log_messages,
+        }
+
+    username = credentials.get("username")
+    password = credentials.get("password")
+
+    if not username or not password:
+        error_message = "Login failed: Username or password not found in research_login_credentials."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "authenticated_driver_session": None,
+            "log_messages": log_messages,
+        }
+
+    try:
+        # Assuming perform_website_login is defined in the same file
+        driver = perform_website_login(url, username, password)
+
+        if driver:
+            success_message = f"Login successful to {url}."
+            print(success_message)
+            log_messages.append(success_message)
+            return {
+                "authenticated_driver_session": driver,
+                "log_messages": log_messages,
+                "error_message": None, # Explicitly set error_message to None on success
+            }
+        else:
+            failure_message = f"Login attempt failed for {url}. See logs from perform_website_login for more details."
+            print(failure_message)
+            log_messages.append(failure_message)
+            return {
+                "error_message": "Login failed. Check internal logs from perform_website_login for details.",
+                "authenticated_driver_session": None,
+                "log_messages": log_messages,
+            }
+    except Exception as e:
+        error_message = f"An unexpected error occurred in node_perform_login: {str(e)}"
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "authenticated_driver_session": None,
+            "log_messages": log_messages,
+        }
+
+# Make sure WebSleuthAgent class definition is available above this function.
+# GrantMasterState should already be imported from ..core.graph_state
+
+def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) -> dict:
+    """
+    LangGraph node to perform research and extraction using WebSleuthAgent.
+    Updates state with extracted grant opportunities or an error message.
+    The 'agent' parameter (WebSleuthAgent instance) will be partially applied
+    when this node is added to the graph.
+    """
+    print("Attempting node_research_and_extract...")
+    authenticated_driver = state.get("authenticated_driver_session")
+    # Use a default research task if not provided in the state
+    research_task_description = state.get('current_research_task_description', 'Find relevant grant opportunities')
+    
+    log_messages = list(state.get("log_messages", []))
+
+    if not authenticated_driver:
+        error_message = "Cannot research, not logged in."
+        print(error_message)
+        log_messages.append("Research skipped: Not logged in.")
+        return {
+            "error_message": error_message,
+            "extracted_grant_opportunities": [], # Ensure this key is present
+            "log_messages": log_messages,
+        }
+
+    try:
+        print(f"Calling WebSleuthAgent.research_and_extract with task: '{research_task_description}'")
+        # Assuming 'agent' is an instance of WebSleuthAgent passed in
+        results_list = agent.research_and_extract(authenticated_driver, research_task_description)
+        
+        # research_and_extract returns [] on error or if nothing found.
+        # Per plan, we don't set state['error_message'] based on empty results_list here,
+        # as that would require research_and_extract to signal errors more explicitly.
+        # The internal logs of research_and_extract will indicate if an error occurred.
+        
+        success_message = f"Research complete: Found {len(results_list)} potential opportunities."
+        print(success_message)
+        log_messages.append(success_message)
+        
+        return {
+            "extracted_grant_opportunities": results_list,
+            "log_messages": log_messages,
+            "error_message": None, # Explicitly set to None on successful execution path
+        }
+    except Exception as e:
+        # This handles unexpected errors within the node function itself
+        error_message = f"An unexpected error occurred in node_research_and_extract: {str(e)}"
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "extracted_grant_opportunities": [],
+            "log_messages": log_messages,
+            "error_message": error_message,
+        }
 
 if __name__ == '__main__':
     # Example Usage (requires OPENAI_API_KEY in .env in the project root: GrantMaster/.env)

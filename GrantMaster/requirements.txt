@@ -3,3 +3,6 @@ streamlit
 python-dotenv
 selenium
 webdriver-manager
+langgraph
+langchain
+langchain-openai

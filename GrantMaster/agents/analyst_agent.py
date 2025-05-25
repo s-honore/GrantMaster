@@ -2,6 +2,10 @@ from openai import OpenAI
 import json
 import os # For __main__ block, to load .env
 
+from ..core.graph_state import GrantMasterState
+from ..core.data_manager import DataManager
+# AnalystAgent class is defined in the same file, so direct use is fine.
+
 class AnalystAgent:
     def __init__(self, openai_client, model="gpt-3.5-turbo"):
         self.openai_client = openai_client
@@ -192,3 +196,125 @@ if __name__ == '__main__':
             print(f"An error occurred during AnalystAgent demo setup or execution: {e}")
             import traceback
             traceback.print_exc()
+
+def node_analyze_opportunities(state: GrantMasterState, agent: AnalystAgent, data_manager: DataManager) -> dict:
+    """
+    LangGraph node to analyze extracted grant opportunities using AnalystAgent
+    and save them along with their analysis using DataManager.
+    The 'agent' (AnalystAgent) and 'data_manager' (DataManager) parameters
+    will be partially applied when this node is added to the graph.
+    """
+    print("Attempting node_analyze_opportunities...")
+    log_messages = list(state.get("log_messages", []))
+
+    organization_profile = state.get("organization_profile")
+    if not organization_profile:
+        error_message = "Cannot analyze opportunities: Organization profile is missing from state."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "log_messages": log_messages,
+            # Ensure extracted_grant_opportunities is passed through or set, even if empty
+            "extracted_grant_opportunities": state.get("extracted_grant_opportunities", []) 
+        }
+
+    extracted_opportunities = state.get("extracted_grant_opportunities")
+    if not extracted_opportunities:
+        info_message = "No extracted grant opportunities to analyze."
+        print(info_message)
+        log_messages.append(info_message)
+        return {
+            "log_messages": log_messages,
+            "extracted_grant_opportunities": [], # Return empty list
+            "error_message": None
+        }
+
+    updated_grants_with_analysis = []
+    processed_count = 0
+
+    for grant_info in extracted_opportunities:
+        grant_title_for_log = grant_info.get('title', grant_info.get('grant_title', 'Unknown Title'))
+        print(f"Analyzing grant: {grant_title_for_log}")
+        try:
+            # 1. Perform analysis
+            # Ensure grant_info contains expected fields like 'title', 'description' etc.
+            # The AnalystAgent's analyze_suitability expects dicts.
+            analysis_result = agent.analyze_suitability(grant_info, organization_profile)
+
+            if analysis_result.get("error"):
+                error_detail = analysis_result.get("error")
+                log_msg = f"Analysis failed for grant '{grant_title_for_log}': {error_detail}"
+                print(log_msg)
+                log_messages.append(log_msg)
+                grant_info['analysis_error'] = error_detail # Add error to the grant object
+                updated_grants_with_analysis.append(grant_info)
+                continue # Skip to next grant
+
+            # 2. Merge analysis into grant_info (for saving and state update)
+            # The analysis_result is a dict like {"rationale": ..., "suitability_score": ..., "status": ...}
+            grant_info['analysis_rationale'] = analysis_result.get('rationale')
+            grant_info['analysis_suitability_score'] = analysis_result.get('suitability_score')
+            grant_info['analysis_status'] = analysis_result.get('status')
+
+            # 3. Save grant with initial analysis details
+            # DataManager.save_grant_opportunity expects individual fields.
+            # Ensure all required fields for save_grant_opportunity are present in grant_info
+            # or mapped correctly.
+            grant_id = data_manager.save_grant_opportunity(
+                grant_title=grant_info.get('title', grant_info.get('grant_title')), # Prefer 'title' if available
+                funder=grant_info.get('funder'),
+                deadline=grant_info.get('deadline'),
+                description=grant_info.get('description'),
+                eligibility=grant_info.get('eligibility'),
+                focus_areas=grant_info.get('focus_areas'),
+                # raw_research_data might be extensive, decide if it should be saved.
+                # For now, let's assume it's part of grant_info if WebSleuth provided it.
+                raw_research_data=grant_info.get('raw_research_data', ''), 
+                analysis_notes=grant_info['analysis_rationale'], # Pass rationale as analysis_notes
+                suitability_score=grant_info['analysis_suitability_score']
+            )
+
+            if grant_id:
+                grant_info['database_id'] = grant_id
+                log_messages.append(f"Grant '{grant_title_for_log}' saved with ID: {grant_id}.")
+
+                # 4. Update the grant with the final analysis status (and other details if needed)
+                # update_grant_analysis takes: grant_id, analysis_notes, suitability_score, status
+                data_manager.update_grant_analysis(
+                    grant_id=grant_id,
+                    analysis_notes=grant_info['analysis_rationale'],
+                    suitability_score=grant_info['analysis_suitability_score'],
+                    status=grant_info['analysis_status']
+                )
+                log_messages.append(f"Analysis status '{grant_info['analysis_status']}' updated for grant ID: {grant_id}.")
+                processed_count += 1
+            else:
+                log_msg = f"Failed to save grant '{grant_title_for_log}' to database."
+                print(log_msg)
+                log_messages.append(log_msg)
+                grant_info['analysis_error'] = "Database save failed"
+            
+            updated_grants_with_analysis.append(grant_info)
+
+        except Exception as e:
+            # Catch any other unexpected error during the loop for a specific grant
+            error_msg = f"Unexpected error processing grant '{grant_title_for_log}': {str(e)}"
+            print(error_msg)
+            log_messages.append(error_msg)
+            grant_info['analysis_error'] = str(e) # Add error to grant object
+            updated_grants_with_analysis.append(grant_info)
+            # Continue to the next grant
+
+    final_log_message = f"Analysis and saving process complete. {processed_count} grants successfully processed and saved with full analysis."
+    if processed_count != len(extracted_opportunities):
+        final_log_message += f" {len(extracted_opportunities) - processed_count} grants had issues during processing."
+    
+    print(final_log_message)
+    log_messages.append(final_log_message)
+
+    return {
+        "extracted_grant_opportunities": updated_grants_with_analysis, # Return the list with updates
+        "log_messages": log_messages,
+        "error_message": None # Node-level error is None unless a prerequisite failed (like org_profile)
+    }
