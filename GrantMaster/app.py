@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 # or that GrantMaster is in PYTHONPATH.
 # If app.py is in GrantMaster/, and core/ and agents/ are also in GrantMaster/
 # then these imports should work.
-from core.graph_orchestrator import GraphOrchestrator
-from core.data_manager import DataManager # Though Orchestrator creates its own, it's good for type hints or direct use if ever needed.
+from GrantMaster.core.graph_orchestrator import GraphOrchestrator
+from GrantMaster.core.data_manager import DataManager # Though Orchestrator creates its own, it's good for type hints or direct use if ever needed.
 
 # --- Page Config (should be the first Streamlit command) ---
 st.set_page_config(page_title="GrantMaster AI", layout="wide")

@@ -10,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import time # For explicit waits if necessary, or for post-login observation
 import json # Added for WebSleuthAgent
-from ..core.graph_state import GrantMasterState # Ensure this import is added at the top of the file
+from GrantMaster.core.graph_state import GrantMasterState # Ensure this import is added at the top of the file
 # Consider adding other imports like 'requests' later for actual web interaction.
 
 def perform_website_login(url, username, password, timeout=10):
