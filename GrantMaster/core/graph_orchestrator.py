@@ -70,6 +70,51 @@ class GraphOrchestrator:
         self.workflow.add_node('handle_error', self.handle_error_node)
         print("GraphOrchestrator: All nodes added to the workflow.")
 
+        # Define the entry point for the graph
+        self.workflow.set_entry_point('login')
+        print("GraphOrchestrator: Entry point set to 'login'.")
+
+        # Conditional edges after login
+        self.workflow.add_conditional_edges(
+            'login',
+            lambda state: 'research' if state.get('authenticated_driver_session') else 'handle_error',
+            {
+                'research': 'research',
+                'handle_error': 'handle_error'
+            }
+        )
+        print("GraphOrchestrator: Conditional edges added for 'login' node.")
+
+        # Conditional edges after research
+        self.workflow.add_conditional_edges(
+            'research',
+            lambda state: 'analyze_opportunities' if not state.get('error_message') else 'handle_error',
+            {
+                'analyze_opportunities': 'analyze_opportunities',
+                'handle_error': 'handle_error'
+            }
+        )
+        print("GraphOrchestrator: Conditional edges added for 'research' node.")
+
+        # Conditional edges after analyze_opportunities
+        # Ensure END is imported: from langgraph.graph import END
+        self.workflow.add_conditional_edges(
+            'analyze_opportunities',
+            lambda state: END if not state.get('error_message') else 'handle_error',
+            {
+                END: END,
+                'handle_error': 'handle_error'
+            }
+        )
+        print("GraphOrchestrator: Conditional edges added for 'analyze_opportunities' node.")
+
+        # Edge from handle_error to END
+        self.workflow.add_edge('handle_error', END)
+        print("GraphOrchestrator: Edge added from 'handle_error' to END.")
+
+        # Graph is defined but not yet compiled here. Compilation will be a separate step.
+        print("GraphOrchestrator: Research pipeline edges defined.")
+
     def handle_error_node(self, state: GrantMasterState) -> dict:
         """
         Handles errors recorded in the state by logging them.
