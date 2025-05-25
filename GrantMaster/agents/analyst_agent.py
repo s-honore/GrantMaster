@@ -2,8 +2,8 @@ from openai import OpenAI
 import json
 import os # For __main__ block, to load .env
 
-from ..core.graph_state import GrantMasterState
-from ..core.data_manager import DataManager
+from GrantMaster.core.graph_state import GrantMasterState
+from GrantMaster.core.data_manager import DataManager
 # AnalystAgent class is defined in the same file, so direct use is fine.
 
 class AnalystAgent:

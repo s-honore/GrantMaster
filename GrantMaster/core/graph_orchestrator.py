@@ -5,12 +5,12 @@ from openai import OpenAI
 from langgraph.graph import StateGraph, END, START # START might not be used yet, but good to have.
 
 # Project-specific imports
-from .graph_state import GrantMasterState
-from .data_manager import DataManager
-from ..agents.researcher_agent import WebSleuthAgent, node_perform_login, node_research_and_extract
-from ..agents.analyst_agent import AnalystAgent, node_analyze_opportunities
-from ..agents.writer_agent import WriterAgent, node_draft_section
-from ..agents.editor_agent import EditorAgent, node_review_draft
+from GrantMaster.core.graph_state import GrantMasterState
+from GrantMaster.core.data_manager import DataManager
+from GrantMaster.agents.researcher_agent import WebSleuthAgent, node_perform_login, node_research_and_extract
+from GrantMaster.agents.analyst_agent import AnalystAgent, node_analyze_opportunities
+from GrantMaster.agents.writer_agent import WriterAgent, node_draft_section
+from GrantMaster.agents.editor_agent import EditorAgent, node_review_draft
 
 # Consider adding a try-except for dotenv if it's used for API key loading,
 # though it's often handled at the application entry point.

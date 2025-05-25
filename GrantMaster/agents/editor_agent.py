@@ -1,7 +1,7 @@
 from openai import OpenAI
 import os # For __main__ block, to load .env
 
-from ..core.graph_state import GrantMasterState
+from GrantMaster.core.graph_state import GrantMasterState
 # EditorAgent class is defined in the same file.
 
 class EditorAgent:
