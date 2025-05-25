@@ -23,6 +23,8 @@ def perform_website_login(url, username, password, timeout=10):
     # LOGIN_BUTTON_LOCATOR_TYPE = By.CSS_SELECTOR
     # LOGIN_BUTTON_LOCATOR_VALUE = "button.xoo-el-login-btn" # Example, to be confirmed
 
+    internal_logs = [] # Initialize internal_logs list
+
     # Commenting out the generic locator lists as per refactoring instructions
     # username_locators = [
     #     (By.ID, 'username'), (By.NAME, 'username'),
@@ -46,7 +48,7 @@ def perform_website_login(url, username, password, timeout=10):
 
     driver = None
     try:
-        print(f"Attempting to initialize Chrome WebDriver...")
+        internal_logs.append(f"perform_website_login: Attempting to initialize Chrome WebDriver...") # Changed from print
         chrome_options = ChromeOptions()
         chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--no-sandbox")
@@ -63,7 +65,7 @@ def perform_website_login(url, username, password, timeout=10):
 
         # Forcing the browser binary location
         expected_browser_path = "/usr/bin/chromium"
-        print(f"Attempting to set browser binary location to: {expected_browser_path}")
+        internal_logs.append(f"perform_website_login: Attempting to set browser binary location to: {expected_browser_path}") # Changed from print
         chrome_options.binary_location = expected_browser_path
 
         # Use system-installed chromedriver
@@ -71,59 +73,59 @@ def perform_website_login(url, username, password, timeout=10):
         
         # Reinstate verbose logging for chromedriver service
         service_args = ['--verbose', '--log-path=/tmp/chromedriver.log']
-        print(f"Initializing ChromeService with system chromedriver path: {system_chromedriver_path} and service_args: {service_args}")
+        internal_logs.append(f"perform_website_login: Initializing ChromeService with system chromedriver path: {system_chromedriver_path} and service_args: {service_args}") # Changed from print
         service = ChromeService(executable_path=system_chromedriver_path, service_args=service_args)
         
-        print("Attempting to start webdriver.Chrome with specified service and options...")
+        internal_logs.append("perform_website_login: Attempting to start webdriver.Chrome with specified service and options...") # Changed from print
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
-        print(f"perform_website_login: WebDriver initialized. Navigating to URL: {url}")
+        internal_logs.append(f"perform_website_login: WebDriver initialized. Navigating to URL: {url}")
         driver.get(url)
-        print(f"perform_website_login: Successfully navigated to URL: {url}")
+        internal_logs.append(f"perform_website_login: Successfully navigated to URL: {url}")
         wait = WebDriverWait(driver, timeout)
 
         # Find and fill username
         username_locator = (By.NAME, "xoo-el-username")
-        print(f"perform_website_login: Attempting to find username field with locator: {username_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find username field with locator: {username_locator}")
         try:
             username_field = wait.until(EC.presence_of_element_located(username_locator))
-            print(f"perform_website_login: Found username field with locator: {username_locator}")
+            internal_logs.append(f"perform_website_login: Found username field with locator: {username_locator}")
         except TimeoutException:
-            print(f"perform_website_login: Timeout waiting for username field with locator: {username_locator}")
+            internal_logs.append(f"perform_website_login: Timeout waiting for username field with locator: {username_locator}")
             raise NoSuchElementException(f"Could not find username field with locator {username_locator} within timeout.")
         
-        print(f"perform_website_login: Sending username: '{username}'")
+        internal_logs.append(f"perform_website_login: Sending username: '{username}'")
         username_field.send_keys(username)
-        print("perform_website_login: Username sent.")
+        internal_logs.append("perform_website_login: Username sent.")
 
         # Find and fill password
         password_locator = (By.NAME, "xoo-el-password")
-        print(f"perform_website_login: Attempting to find password field with locator: {password_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find password field with locator: {password_locator}")
         try:
             # Using a shorter wait for password field, assuming it might appear after username interaction or be readily available.
             password_field = WebDriverWait(driver, 5).until(EC.presence_of_element_located(password_locator))
-            print(f"perform_website_login: Found password field with locator: {password_locator}")
+            internal_logs.append(f"perform_website_login: Found password field with locator: {password_locator}")
         except TimeoutException:
-            print(f"perform_website_login: Timeout waiting for password field with locator: {password_locator}")
+            internal_logs.append(f"perform_website_login: Timeout waiting for password field with locator: {password_locator}")
             raise NoSuchElementException(f"Could not find password field with locator {password_locator} within timeout.")
 
-        print("perform_website_login: Sending password...") # Not logging actual password for security
+        internal_logs.append("perform_website_login: Sending password...") # Not logging actual password for security
         password_field.send_keys(password)
-        print("perform_website_login: Password sent.")
+        internal_logs.append("perform_website_login: Password sent.")
 
         # Find and click login button
         login_button_locator = (By.CSS_SELECTOR, "button.xoo-el-login-btn")
-        print(f"perform_website_login: Attempting to find login button with locator: {login_button_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find login button with locator: {login_button_locator}")
         try:
             login_button = wait.until(EC.element_to_be_clickable(login_button_locator))
-            print(f"perform_website_login: Found login button with locator: {login_button_locator}")
+            internal_logs.append(f"perform_website_login: Found login button with locator: {login_button_locator}")
         except TimeoutException:
-            print(f"perform_website_login: Timeout waiting for login button with locator: {login_button_locator} or it was not clickable.")
+            internal_logs.append(f"perform_website_login: Timeout waiting for login button with locator: {login_button_locator} or it was not clickable.")
             raise NoSuchElementException(f"Could not find login button with locator {login_button_locator} or it was not clickable within timeout.")
         
-        print(f"perform_website_login: Attempting to click login button with locator {login_button_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to click login button with locator {login_button_locator}")
         login_button.click()
-        print("perform_website_login: Login button click action performed.")
+        internal_logs.append("perform_website_login: Login button click action performed.")
 
         # Post-login check (placeholder - very basic)
         # A more robust check would be to wait for a specific element that appears only after login,
@@ -134,38 +136,38 @@ def perform_website_login(url, username, password, timeout=10):
         if "login" in current_url.lower() or url == current_url: # Simple check if URL still looks like a login page
             # This check is very basic. Many sites redirect to login on failure.
             # A more reliable check is needed, e.g., looking for error messages or specific post-login elements.
-            print(f"perform_website_login: Post-login check: Current URL ({current_url}) might indicate login failure or no redirect.")
+            internal_logs.append(f"perform_website_login: Post-login check: Current URL ({current_url}) might indicate login failure or no redirect.")
             # Consider checking for common error messages here if possible
             # error_messages = driver.find_elements(By.CSS_SELECTOR, ".error, .alert, [class*='error']")
             # if any("invalid" in msg.text.lower() for msg in error_messages if msg.is_displayed()):
-            #     print("perform_website_login: Login error message detected on page.")
+            #     internal_logs.append("perform_website_login: Login error message detected on page.")
             #     raise Exception("Login failed: Error message detected on page.")
 
-        print(f"perform_website_login: Login attempt to {url} seems successful. Current URL: {driver.current_url}")
-        return driver
+        internal_logs.append(f"perform_website_login: Login attempt to {url} seems successful. Current URL: {driver.current_url}")
+        return driver, internal_logs
 
     except TimeoutException as e:
-        # Note: Specific timeout context (e.g. "waiting for username") is logged within the loops.
-        # This top-level TimeoutException might occur if driver.get(url) times out, or other WebDriverWait calls.
-        print(f"perform_website_login: ERROR: A timeout occurred during login process. Details: {e}")
+        # Note: Specific timeout context (e.g. "waiting for username") is logged within the try-except blocks for element finding.
+        # This top-level TimeoutException might occur if driver.get(url) times out, or other WebDriverWait calls not caught by more specific handlers.
+        internal_logs.append(f"perform_website_login: ERROR: A timeout occurred during login process. Details: {e}")
         if driver:
-            print("perform_website_login: Quitting driver due to TimeoutException.")
+            internal_logs.append("perform_website_login: Quitting driver due to TimeoutException.")
             driver.quit()
-        return None
+        return None, internal_logs
     except NoSuchElementException as e:
         # Specific context for NoSuchElementException is logged before raising it (e.g. "Username field not found").
         # This top-level handler catches it if not handled more specifically or re-raised.
-        print(f"perform_website_login: ERROR: Could not find a required login element. Details: {e}")
+        internal_logs.append(f"perform_website_login: ERROR: Could not find a required login element. Details: {e}")
         if driver:
-            print("perform_website_login: Quitting driver due to NoSuchElementException.")
+            internal_logs.append("perform_website_login: Quitting driver due to NoSuchElementException.")
             driver.quit()
-        return None
+        return None, internal_logs
     except Exception as e:
-        print(f"perform_website_login: ERROR: An unexpected error occurred: {type(e).__name__} - {e}")
+        internal_logs.append(f"perform_website_login: ERROR: An unexpected error occurred: {type(e).__name__} - {e}")
         if driver:
-            print("perform_website_login: Quitting driver due to unexpected exception.")
+            internal_logs.append("perform_website_login: Quitting driver due to unexpected exception.")
             driver.quit()
-        return None
+        return None, internal_logs
 
 class WebSleuthAgent:
     def __init__(self, openai_client, model="gpt-3.5-turbo"):
@@ -291,14 +293,14 @@ def node_perform_login(state: GrantMasterState) -> dict:
     LangGraph node to perform website login using credentials from the state.
     Updates the state with the authenticated driver session or an error message.
     """
-    print("Attempting node_perform_login...")
+    print("Attempting node_perform_login...") # This print is outside perform_website_login, so it remains.
     raw_url = state.get("research_website_url")
     credentials = state.get("research_login_credentials")
     log_messages = list(state.get("log_messages", [])) # Initialize log_messages
 
     if not raw_url: # Check for raw_url specifically
         error_message = "Login failed: research_website_url not found in state."
-        print(error_message)
+        print(error_message) # This print is outside perform_website_login, so it remains.
         log_messages.append(error_message)
         return {
             "error_message": error_message,
@@ -318,12 +320,12 @@ def node_perform_login(state: GrantMasterState) -> dict:
     if not raw_url.startswith("http://") and not raw_url.startswith("https://"):
         url_for_login_function = f"https://{raw_url}"
         log_message = f"URL scheme missing, prepended 'https://'. Original: '{raw_url}', Used: '{url_for_login_function}'"
-        print(log_message)
+        print(log_message) # This print is outside perform_website_login, so it remains.
         log_messages.append(log_message)
     else:
         url_for_login_function = raw_url
         log_message = f"Attempting login with provided URL: {url_for_login_function}"
-        print(log_message)
+        print(log_message) # This print is outside perform_website_login, so it remains.
         log_messages.append(log_message)
 
     username = credentials.get("username")
@@ -331,7 +333,7 @@ def node_perform_login(state: GrantMasterState) -> dict:
 
     if not username or not password:
         error_message = "Login failed: Username or password not found in research_login_credentials."
-        print(error_message)
+        print(error_message) # This print is outside perform_website_login, so it remains.
         log_messages.append(error_message)
         return {
             "error_message": error_message,
@@ -340,13 +342,15 @@ def node_perform_login(state: GrantMasterState) -> dict:
         }
 
     driver = None # Initialize driver to None before the try block
+    internal_login_logs = [] # Initialize for perform_website_login's logs
     try:
         # Assuming perform_website_login is defined in the same file
-        driver = perform_website_login(url_for_login_function, username, password)
+        driver, internal_login_logs = perform_website_login(url_for_login_function, username, password) # Capture logs
+        log_messages.extend(internal_login_logs) # Append internal logs to the main log_messages list
 
         if driver:
             success_message = f"Login successful to {url_for_login_function}."
-            print(success_message)
+            print(success_message) # This print is outside perform_website_login, so it remains.
             log_messages.append(success_message)
             return {
                 "authenticated_driver_session": driver,
@@ -354,22 +358,23 @@ def node_perform_login(state: GrantMasterState) -> dict:
                 "error_message": None, # Explicitly set error_message to None on success
             }
         else:
-            # perform_website_login is expected to log its own detailed errors and quit its driver
-            failure_message = f"Login attempt to {url_for_login_function} failed. See logs from perform_website_login for details."
-            print(failure_message)
+            # perform_website_login now returns its logs, which have been appended.
+            # The error message here should reflect that perform_website_login indicated failure.
+            failure_message = f"Login attempt to {url_for_login_function} failed internally (driver not returned). See appended logs for details from perform_website_login."
+            print(failure_message) # This print is outside perform_website_login, so it remains.
             log_messages.append(failure_message)
-            # No driver to quit here, as perform_website_login would have handled it if it created one
             return {
-                "error_message": f"Login failed for {url_for_login_function}. Check internal logs from perform_website_login.",
+                "error_message": f"Login failed for {url_for_login_function}. Driver not returned by perform_website_login. Check appended logs.",
                 "authenticated_driver_session": None,
                 "log_messages": log_messages,
             }
     except Exception as e:
-        error_detail = f"An unexpected error occurred in node_perform_login after calling perform_website_login for {url_for_login_function}: {type(e).__name__} - {str(e)}"
-        print(error_detail)
+        error_detail = f"An unexpected error occurred in node_perform_login while calling or processing result from perform_website_login for {url_for_login_function}: {type(e).__name__} - {str(e)}"
+        print(error_detail) # This print is outside perform_website_login, so it remains.
+        log_messages.extend(internal_login_logs) # Ensure any partial logs from perform_website_login are added
         log_messages.append(error_detail)
-        if driver: # If driver was assigned (meaning perform_website_login was successful)
-            print("Quitting driver due to an error in node_perform_login after successful login function call.")
+        if driver: # If driver was assigned (meaning perform_website_login was successful before this outer exception)
+            print("Quitting driver due to an error in node_perform_login after successful login function call.") # This print is outside perform_website_login
             driver.quit()
         return {
             "error_message": error_detail, # Use the more detailed error message
