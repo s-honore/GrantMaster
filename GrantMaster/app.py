@@ -1,3 +1,21 @@
+import sys
+import os
+
+# Get the directory of the currently running script (app.py)
+# In Streamlit Cloud, this will be something like /mount/src/grantmaster/GrantMaster/
+current_script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Get the parent directory of current_script_dir
+# This should be /mount/src/grantmaster/, which is the root containing the GrantMaster package
+project_root = os.path.dirname(current_script_dir)
+
+# Add project_root to the beginning of sys.path if it's not already there
+# This allows Python to find the 'GrantMaster' package
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# --- Existing imports should now work ---
+# (The rest of the file content should follow this block)
 import streamlit as st
 import os
 from dotenv import load_dotenv
