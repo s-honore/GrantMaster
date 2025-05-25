@@ -2,6 +2,7 @@
 from openai import OpenAI
 import os
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
@@ -41,8 +42,20 @@ def perform_website_login(url, username, password, timeout=10):
     driver = None
     try:
         print(f"Attempting to initialize Chrome WebDriver...")
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()))
-        print(f"WebDriver initialized. Navigating to login page: {url}")
+        chrome_options = ChromeOptions()
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--proxy-server='direct://'")
+        chrome_options.add_argument("--proxy-bypass-list=*")
+        chrome_options.add_argument("--start-maximized")
+        chrome_options.add_argument("--log-level=1") # You can adjust log level if needed
+
+        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
+        print(f"WebDriver initialized with headless options. Navigating to login page: {url}")
         driver.get(url)
         wait = WebDriverWait(driver, timeout)
 
