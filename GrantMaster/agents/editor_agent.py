@@ -1,6 +1,9 @@
 from openai import OpenAI
 import os # For __main__ block, to load .env
 
+from ..core.graph_state import GrantMasterState
+# EditorAgent class is defined in the same file.
+
 class EditorAgent:
     def __init__(self, openai_client, model="gpt-4o"): # Using a capable model for review
         self.openai_client = openai_client
@@ -144,3 +147,79 @@ if __name__ == '__main__':
             print(f"An error occurred during EditorAgent demo setup or execution: {e}")
             import traceback
             traceback.print_exc()
+
+def node_review_draft(state: GrantMasterState, agent: EditorAgent) -> dict:
+    """
+    LangGraph node to review a draft section using EditorAgent.
+    It uses current_draft_content, current_section_name, and optionally
+    grant guidelines from current_grant_details in the state.
+    Updates state with editor_feedback and logs.
+    """
+    print("Attempting node_review_draft...")
+    log_messages = list(state.get("log_messages", []))
+
+    current_draft_content = state.get("current_draft_content")
+    current_section_name = state.get("current_section_name")
+    current_grant_details = state.get("current_grant_details", {}) # Default to empty dict if not present
+
+    # Prerequisite checks
+    if not current_section_name: # Section name is crucial
+        error_message = "Cannot review draft: Missing current_section_name in state."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "log_messages": log_messages,
+            "editor_feedback": "" # Ensure key exists
+        }
+        
+    if not current_draft_content: # Draft content is crucial
+        error_message = f"Cannot review draft for section '{current_section_name}': Missing current_draft_content in state or content is empty."
+        print(error_message)
+        log_messages.append(error_message)
+        return {
+            "error_message": error_message,
+            "log_messages": log_messages,
+            "editor_feedback": "" # Ensure key exists
+        }
+
+    # Extract guidelines from grant details (example logic, adjust key if necessary)
+    # The prompt suggested state.get('current_grant_details', {}).get('guidelines')
+    # Using 'guidelines_summary' or 'guidelines' as potential keys.
+    grant_guidelines = current_grant_details.get('guidelines_summary', current_grant_details.get('guidelines', ''))
+    if not isinstance(grant_guidelines, str): # Ensure it's a string
+        grant_guidelines = str(grant_guidelines) if grant_guidelines is not None else ''
+
+
+    node_error_message = None
+    feedback_text = ""
+
+    try:
+        print(f"Calling EditorAgent.review_draft for section: '{current_section_name}'")
+        feedback_text = agent.review_draft(
+            draft_text=current_draft_content,
+            section_name=current_section_name,
+            grant_guidelines_summary=grant_guidelines
+        )
+
+        if feedback_text.startswith("// Error"):
+            agent_error = f"EditorAgent failed to review section '{current_section_name}': {feedback_text}"
+            print(agent_error)
+            log_messages.append(agent_error)
+            node_error_message = agent_error # Set node error from agent error
+            feedback_text = "" # Clear feedback text on agent error
+        else:
+            log_messages.append(f"Feedback received for section: {current_section_name} from editor.")
+
+    except Exception as e:
+        unexpected_error = f"Unexpected error in node_review_draft for '{current_section_name}': {str(e)}"
+        print(unexpected_error)
+        log_messages.append(unexpected_error)
+        node_error_message = unexpected_error
+        feedback_text = "" # Clear feedback text on unexpected error
+
+    return {
+        "editor_feedback": feedback_text,
+        "log_messages": log_messages,
+        "error_message": node_error_message
+    }
