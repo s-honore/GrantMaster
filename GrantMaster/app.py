@@ -317,6 +317,17 @@ if graph_orchestrator and graph_orchestrator.data_manager:
                     st.text(entry) 
             else:
                 st.info("No log messages available for this research run.")
+            
+            # Add download button for log messages
+            if log_messages: # Check if log_messages list is not empty
+                log_content = "\n".join(log_messages)
+                st.download_button(
+                    label="Download Run Log", # Changed label
+                    data=log_content,
+                    file_name="grantmaster_run_log.txt", # Changed filename
+                    mime="text/plain",
+                    key="download_research_log_button" 
+                )
         
         # Button to clear the current research results and log
         if st.button("Clear Research Results & Log", key="clear_research_state_button"):
