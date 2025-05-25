@@ -115,6 +115,36 @@ class GraphOrchestrator:
         # Graph is defined but not yet compiled here. Compilation will be a separate step.
         print("GraphOrchestrator: Research pipeline edges defined.")
 
+        # Define edges for the writing/editing loop
+        self.workflow.add_edge('draft_section', 'edit_section')
+        print("GraphOrchestrator: Edge added from 'draft_section' to 'edit_section'.")
+
+        self.workflow.add_conditional_edges(
+            'edit_section',
+            self.should_redraft_or_save, # Method defined in the same class
+            {
+                'draft_section_again': 'draft_section', # Route back to draft_section
+                'save_section': 'save_section',
+                'handle_error': 'handle_error'
+            }
+        )
+        print("GraphOrchestrator: Conditional edges added for 'edit_section' node using 'should_redraft_or_save'.")
+
+        self.workflow.add_edge('save_section', END) # Ensure END is imported
+        print("GraphOrchestrator: Edge added from 'save_section' to END.")
+        
+        # Compile the graph
+        try:
+            self.app = self.workflow.compile()
+            print("GraphOrchestrator: Workflow compiled successfully.")
+        except Exception as e:
+            print(f"GraphOrchestrator: CRITICAL - Workflow compilation failed: {e}")
+            # import traceback
+            # print(traceback.format_exc())
+            self.app = None # Ensure self.app is None if compilation fails
+            # Depending on desired behavior, could re-raise the exception
+            # raise
+
     def handle_error_node(self, state: GrantMasterState) -> dict:
         """
         Handles errors recorded in the state by logging them.
@@ -208,6 +238,50 @@ class GraphOrchestrator:
         }
 
     # (Future methods like compile_graph, run_graph will be added here)
+
+    def should_redraft_or_save(self, state: GrantMasterState) -> str:
+        """
+        Determines the next step after an editor's review based on feedback,
+        iteration count, and error state.
+        """
+        print("GraphOrchestrator.should_redraft_or_save: Evaluating state...")
+        error_message = state.get('error_message')
+        editor_feedback = state.get('editor_feedback', '').lower() # Default to empty string, convert to lower
+        iteration_count = state.get('iteration_count', 0) # Default to 0
+
+        # Max iterations for the writing loop (could be made configurable)
+        max_iterations = 3 
+
+        if error_message:
+            print(f"  Decision: Error found ('{error_message}') -> routing to handle_error")
+            return 'handle_error'
+
+        if iteration_count >= max_iterations:
+            print(f"  Decision: Max iterations ({max_iterations}) reached -> routing to save_section")
+            return 'save_section'
+
+        # Placeholder logic for interpreting feedback
+        # More sophisticated NLP/keyword analysis could be used here.
+        approval_keywords = ['looks good', 'approved', 'no changes needed', 'ready to save']
+        
+        requires_redraft = True # Default assumption unless explicit approval
+        if any(keyword in editor_feedback for keyword in approval_keywords):
+            requires_redraft = False
+        
+        if not editor_feedback.strip(): # If feedback is empty or just whitespace
+             print("  Decision: No substantive editor feedback provided, and not explicitly approved.")
+             # Depending on desired flow: could save, or could assume redraft if not explicitly approved.
+             # For now, let's be conservative: if no feedback, assume it might need another look or wasn't reviewed properly.
+             # However, prompt's "Else (feedback requires redrafting and iterations < max): return 'draft_section_again'"
+             # implies that empty feedback without approval keywords also leads to redraft.
+             requires_redraft = True 
+
+        if requires_redraft:
+            print(f"  Decision: Feedback requires redraft (or feedback empty/not explicitly approved), iterations {iteration_count} < {max_iterations} -> routing to draft_section_again")
+            return 'draft_section_again'
+        else: # Approved or no redraft needed
+            print(f"  Decision: Feedback suggests approval or no redraft needed -> routing to save_section")
+            return 'save_section'
 
 # (This should be at the very end of the file, after GraphOrchestrator class definition)
 if __name__ == '__main__':

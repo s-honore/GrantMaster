@@ -124,5 +124,57 @@ class TestGraphOrchestratorNodes(unittest.TestCase):
         self.assertTrue(any("ERROR ENCOUNTERED IN GRAPH: No specific error message provided in state." in msg for msg in result['log_messages']))
         self.assertNotIn('error_message', result) # The node does not return error_message: None
 
+    # --- Tests for should_redraft_or_save ---
+    def test_should_redraft_or_save_error_message(self):
+        state = self.get_state(error_message="Critical failure in prior node")
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'handle_error')
+
+    def test_should_redraft_or_save_max_iterations(self):
+        # Test at max_iterations
+        state_at_max = self.get_state(iteration_count=3, editor_feedback="Needs changes", error_message=None)
+        decision_at_max = self.orchestrator.should_redraft_or_save(state_at_max)
+        self.assertEqual(decision_at_max, 'save_section')
+
+        # Test above max_iterations
+        state_above_max = self.get_state(iteration_count=4, editor_feedback="Still needs changes", error_message=None)
+        decision_above_max = self.orchestrator.should_redraft_or_save(state_above_max)
+        self.assertEqual(decision_above_max, 'save_section')
+
+    def test_should_redraft_or_save_approval_looks_good(self):
+        state = self.get_state(editor_feedback="This draft looks good!", iteration_count=1, error_message=None)
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'save_section')
+
+    def test_should_redraft_or_save_approval_approved_case_insensitive(self):
+        state = self.get_state(editor_feedback="Consider this APPROVED.", iteration_count=1, error_message=None)
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'save_section')
+
+    def test_should_redraft_or_save_needs_redraft(self):
+        state = self.get_state(editor_feedback="Needs major revisions.", iteration_count=1, error_message=None)
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'draft_section_again')
+
+    def test_should_redraft_or_save_empty_feedback(self):
+        state = self.get_state(editor_feedback="", iteration_count=1, error_message=None)
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'draft_section_again')
+        
+    def test_should_redraft_or_save_whitespace_feedback(self):
+        state = self.get_state(editor_feedback="   ", iteration_count=1, error_message=None)
+        decision = self.orchestrator.should_redraft_or_save(state)
+        self.assertEqual(decision, 'draft_section_again')
+
+    # --- Test for Graph Compilation ---
+    def test_graph_orchestrator_compilation(self):
+        # setUp already initializes self.orchestrator and thus compiles the graph
+        self.assertIsNotNone(self.orchestrator.app, "Graph compilation should result in a non-None app object.")
+        # Langchain's compiled graphs are instances of `CompiledGraph` which is a `Runnable`.
+        # Runnables have an `invoke` method.
+        self.assertTrue(callable(self.orchestrator.app.invoke), "Compiled app should have a callable 'invoke' method.")
+        # Could also check for 'stream' if that's intended for use:
+        # self.assertTrue(callable(self.orchestrator.app.stream), "Compiled app should have a callable 'stream' method.")
+
 if __name__ == '__main__':
     unittest.main()
