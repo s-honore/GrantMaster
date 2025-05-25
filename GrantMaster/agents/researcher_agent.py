@@ -14,29 +14,35 @@ from GrantMaster.core.graph_state import GrantMasterState # Ensure this import i
 # Consider adding other imports like 'requests' later for actual web interaction.
 
 def perform_website_login(url, username, password, timeout=10):
-    # Common locators for login elements
-    # (These might need to be configurable or more sophisticated later)
-    username_locators = [
-        (By.ID, 'username'), (By.NAME, 'username'),
-        (By.ID, 'user'), (By.NAME, 'user'),
-        (By.ID, 'email'), (By.NAME, 'email'),
-        (By.ID, 'userid'), (By.NAME, 'userid')
-    ]
-    password_locators = [
-        (By.ID, 'password'), (By.NAME, 'password'),
-        (By.ID, 'pass'), (By.NAME, 'pass'),
-        (By.ID, 'passwd'), (By.NAME, 'passwd')
-    ]
-    # More specific button locators might be needed for different sites
-    # e.g., (By.XPATH, "//button[contains(text(),'Login')]") or (By.CSS_SELECTOR, "button[type='submit']")
-    login_button_locators = [
-        (By.ID, 'login_button'), (By.NAME, 'login_button'),
-        (By.ID, 'signin'), (By.NAME, 'signin'),
-        (By.XPATH, "//button[contains(translate(., 'LOGIN', 'login'), 'login')]"), # Case-insensitive text search
-        (By.XPATH, "//input[@type='submit' and contains(translate(@value, 'LOGIN', 'login'), 'login')]"),
-        (By.CSS_SELECTOR, "button[type='submit']"),
-        (By.ID, 'login'), (By.NAME, 'login')
-    ]
+    # Specific locators for the target website (e.g., grants.gov via Login.gov)
+    # These are based on the example https://www.grants.gov/login (which redirects to secure.login.gov)
+    # USERNAME_LOCATOR_TYPE = By.NAME 
+    # USERNAME_LOCATOR_VALUE = "xoo-el-username" # Example, to be confirmed on actual site
+    # PASSWORD_LOCATOR_TYPE = By.NAME
+    # PASSWORD_LOCATOR_VALUE = "xoo-el-password" # Example, to be confirmed
+    # LOGIN_BUTTON_LOCATOR_TYPE = By.CSS_SELECTOR
+    # LOGIN_BUTTON_LOCATOR_VALUE = "button.xoo-el-login-btn" # Example, to be confirmed
+
+    # Commenting out the generic locator lists as per refactoring instructions
+    # username_locators = [
+    #     (By.ID, 'username'), (By.NAME, 'username'),
+    #     (By.ID, 'user'), (By.NAME, 'user'),
+    #     (By.ID, 'email'), (By.NAME, 'email'),
+    #     (By.ID, 'userid'), (By.NAME, 'userid')
+    # ]
+    # password_locators = [
+    #     (By.ID, 'password'), (By.NAME, 'password'),
+    #     (By.ID, 'pass'), (By.NAME, 'pass'),
+    #     (By.ID, 'passwd'), (By.NAME, 'passwd')
+    # ]
+    # login_button_locators = [
+    #     (By.ID, 'login_button'), (By.NAME, 'login_button'),
+    #     (By.ID, 'signin'), (By.NAME, 'signin'),
+    #     (By.XPATH, "//button[contains(translate(., 'LOGIN', 'login'), 'login')]"),
+    #     (By.XPATH, "//input[@type='submit' and contains(translate(@value, 'LOGIN', 'login'), 'login')]"),
+    #     (By.CSS_SELECTOR, "button[type='submit']"),
+    #     (By.ID, 'login'), (By.NAME, 'login')
+    # ]
 
     driver = None
     try:
@@ -77,68 +83,45 @@ def perform_website_login(url, username, password, timeout=10):
         wait = WebDriverWait(driver, timeout)
 
         # Find and fill username
-        username_field = None
-        print("perform_website_login: Attempting to find username field...")
-        for by, value in username_locators:
-            print(f"perform_website_login: Trying username locator {by}: {value}")
-            try:
-                username_field = wait.until(EC.presence_of_element_located((by, value)))
-                if username_field:
-                    print(f"perform_website_login: Found username field with {by}: {value}")
-                    break
-            except TimeoutException:
-                print(f"perform_website_login: Username field not found with {by}: {value} within timeout.")
-                continue
-        if not username_field:
-            print("perform_website_login: Username field not found with any common locators.")
-            raise NoSuchElementException("Could not find username field with any common locators.")
+        username_locator = (By.NAME, "xoo-el-username")
+        print(f"perform_website_login: Attempting to find username field with locator: {username_locator}")
+        try:
+            username_field = wait.until(EC.presence_of_element_located(username_locator))
+            print(f"perform_website_login: Found username field with locator: {username_locator}")
+        except TimeoutException:
+            print(f"perform_website_login: Timeout waiting for username field with locator: {username_locator}")
+            raise NoSuchElementException(f"Could not find username field with locator {username_locator} within timeout.")
         
         print(f"perform_website_login: Sending username: '{username}'")
         username_field.send_keys(username)
         print("perform_website_login: Username sent.")
 
         # Find and fill password
-        password_field = None
-        print("perform_website_login: Attempting to find password field...")
-        for by, value in password_locators:
-            print(f"perform_website_login: Trying password locator {by}: {value}")
-            try:
-                # Re-wait for password field, it might appear after username interaction
-                password_field = WebDriverWait(driver, 5).until(EC.presence_of_element_located((by, value))) # Shorter timeout for subsequent fields
-                if password_field:
-                    print(f"perform_website_login: Found password field with {by}: {value}")
-                    break
-            except TimeoutException:
-                print(f"perform_website_login: Password field not found with {by}: {value} within timeout.")
-                continue
-        if not password_field:
-            print("perform_website_login: Password field not found with any common locators.")
-            raise NoSuchElementException("Could not find password field with any common locators.")
-        
+        password_locator = (By.NAME, "xoo-el-password")
+        print(f"perform_website_login: Attempting to find password field with locator: {password_locator}")
+        try:
+            # Using a shorter wait for password field, assuming it might appear after username interaction or be readily available.
+            password_field = WebDriverWait(driver, 5).until(EC.presence_of_element_located(password_locator))
+            print(f"perform_website_login: Found password field with locator: {password_locator}")
+        except TimeoutException:
+            print(f"perform_website_login: Timeout waiting for password field with locator: {password_locator}")
+            raise NoSuchElementException(f"Could not find password field with locator {password_locator} within timeout.")
+
         print("perform_website_login: Sending password...") # Not logging actual password for security
         password_field.send_keys(password)
         print("perform_website_login: Password sent.")
 
         # Find and click login button
-        login_button = None
-        active_login_button_locator = None # To store the successful locator for logging click
-        print("perform_website_login: Attempting to find login button...")
-        for by, value in login_button_locators:
-            print(f"perform_website_login: Trying login button locator {by}: {value}")
-            try:
-                login_button = wait.until(EC.element_to_be_clickable((by, value)))
-                if login_button:
-                    print(f"perform_website_login: Found login button with {by}: {value}")
-                    active_login_button_locator = (by, value)
-                    break
-            except TimeoutException:
-                print(f"perform_website_login: Login button not found with {by}: {value} or not clickable.")
-                continue
-        if not login_button:
-            print("perform_website_login: Login button not found with any common locators or it was not clickable.")
-            raise NoSuchElementException("Could not find login button with any common locators or it was not clickable.")
+        login_button_locator = (By.CSS_SELECTOR, "button.xoo-el-login-btn")
+        print(f"perform_website_login: Attempting to find login button with locator: {login_button_locator}")
+        try:
+            login_button = wait.until(EC.element_to_be_clickable(login_button_locator))
+            print(f"perform_website_login: Found login button with locator: {login_button_locator}")
+        except TimeoutException:
+            print(f"perform_website_login: Timeout waiting for login button with locator: {login_button_locator} or it was not clickable.")
+            raise NoSuchElementException(f"Could not find login button with locator {login_button_locator} or it was not clickable within timeout.")
         
-        print(f"perform_website_login: Attempting to click login button with locator {active_login_button_locator[0]}: {active_login_button_locator[1]}")
+        print(f"perform_website_login: Attempting to click login button with locator {login_button_locator}")
         login_button.click()
         print("perform_website_login: Login button click action performed.")
 
