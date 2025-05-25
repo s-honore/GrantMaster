@@ -1,0 +1,13 @@
+libglib2.0-0
+libnss3
+libgconf-2-4
+libfontconfig1
+libx11-6
+libx11-xcb1
+libxcomposite1
+libxdamage1
+libxrandr2
+libgbm1
+libgtk-3-0
+libasound2
+libxtst6
