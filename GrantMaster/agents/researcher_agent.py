@@ -428,24 +428,28 @@ def node_research_and_extract(state: GrantMasterState, agent: WebSleuthAgent) ->
     log_messages = list(state.get("log_messages", []))
     ws_logs = [] # Initialize to capture logs from WebSleuthAgent
 
-    # Log initial page info from the authenticated driver
-    if authenticated_driver: # Only attempt if driver exists
+    # This code assumes authenticated_driver and log_messages are already defined.
+    # If authenticated_driver could be None here, wrap this in an 'if authenticated_driver:' block.
+    
+    if authenticated_driver: # Added this check for safety
         try:
             current_url = authenticated_driver.current_url
             page_title = authenticated_driver.title
-            log_messages.append(f"Research node: Successfully received authenticated driver. Current URL: {current_url}, Title: {page_title}")
+            log_messages.append(f"Research node: Authenticated driver. Current URL: {current_url}, Title: {page_title}")
 
-            # Log a snippet of the page source
             page_html_snippet = authenticated_driver.page_source[:500] # Get first 500 chars
             log_messages.append(f"Research node: Page source snippet (first 500 chars): {page_html_snippet}")
 
         except Exception as e_pageinfo:
             error_detail = f"Error getting initial page info in research node: {type(e_pageinfo).__name__} - {str(e_pageinfo)}"
             log_messages.append(f"Research node: ERROR: {error_detail}")
-            # Potentially return error state here if this info is critical before proceeding
-            # For now, just log and continue to the main research logic,
-            # as WebSleuthAgent's own error handling will catch further issues.
+            # Depending on desired behavior, you might choose to not proceed if this fails.
+            # For now, just log and let subsequent steps attempt execution.
+    else:
+        log_messages.append("Research node: Authenticated driver not found. Skipping initial page logging.")
 
+
+# The rest of the function (e.g., checking if authenticated_driver is truly None for error returns, calling agent.research_and_extract) follows.
     if not authenticated_driver:
         error_message = "Cannot research, not logged in."
         # print(error_message) # Original print, now handled by log_messages
