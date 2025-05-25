@@ -84,48 +84,72 @@ def perform_website_login(url, username, password, timeout=10):
         internal_logs.append(f"perform_website_login: Successfully navigated to URL: {url}")
         wait = WebDriverWait(driver, timeout)
 
-        # Find and fill username
+        # Click the "Kom indenfor" login trigger button to open the popup
+        LOGIN_TRIGGER_BUTTON_LOCATOR = (By.CSS_SELECTOR, "a.xoo-el-login-tgr")
+        internal_logs.append(f"perform_website_login: Looking for login trigger button: {LOGIN_TRIGGER_BUTTON_LOCATOR[1]}")
+        try:
+            login_trigger_button = WebDriverWait(driver, timeout).until(
+                EC.element_to_be_clickable(LOGIN_TRIGGER_BUTTON_LOCATOR)
+            )
+            internal_logs.append("perform_website_login: Login trigger button found. Clicking it to open popup.")
+            login_trigger_button.click()
+            internal_logs.append("perform_website_login: Login trigger button clicked. Pausing for popup to appear.")
+            time.sleep(1.5) # Give a moment for the popup to start loading
+        except TimeoutException:
+            error_detail = f"TimeoutException: Could not find or click the 'Kom indenfor' login trigger button with locator {LOGIN_TRIGGER_BUTTON_LOCATOR}."
+            internal_logs.append(f"perform_website_login: ERROR: {error_detail}")
+            # The main try-except block of perform_website_login will handle driver.quit() and returning (None, internal_logs)
+            raise # Re-raise the TimeoutException to be caught by the outer handler.
+        except Exception as e_trigger: # Catch other potential errors during trigger click
+            error_detail = f"Error clicking login trigger button {LOGIN_TRIGGER_BUTTON_LOCATOR}: {type(e_trigger).__name__} - {str(e_trigger)}"
+            internal_logs.append(f"perform_website_login: ERROR: {error_detail}")
+            raise # Re-raise to be caught by the outer handler
+
+        # Find and fill username in the popup
         username_locator = (By.NAME, "xoo-el-username")
-        internal_logs.append(f"perform_website_login: Attempting to find username field with locator: {username_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find username field in popup with locator: {username_locator}")
         try:
             username_field = wait.until(EC.presence_of_element_located(username_locator))
-            internal_logs.append(f"perform_website_login: Found username field with locator: {username_locator}")
+            internal_logs.append(f"perform_website_login: Found username field in popup with locator: {username_locator}")
         except TimeoutException:
-            internal_logs.append(f"perform_website_login: Timeout waiting for username field with locator: {username_locator}")
-            raise NoSuchElementException(f"Could not find username field with locator {username_locator} within timeout.")
+            internal_logs.append(f"perform_website_login: Timeout waiting for username field in popup with locator: {username_locator}")
+            raise NoSuchElementException(f"Could not find username field in popup with locator {username_locator} within timeout {timeout}s.")
         
-        internal_logs.append(f"perform_website_login: Sending username: '{username}'")
+        internal_logs.append(f"perform_website_login: Sending username '{username}' to popup field.")
         username_field.send_keys(username)
-        internal_logs.append("perform_website_login: Username sent.")
+        time.sleep(0.5) # Pause after sending keys
+        internal_logs.append("perform_website_login: Username sent to popup field.")
 
-        # Find and fill password
+        # Find and fill password in the popup
         password_locator = (By.NAME, "xoo-el-password")
-        internal_logs.append(f"perform_website_login: Attempting to find password field with locator: {password_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find password field in popup with locator: {password_locator}")
         try:
-            # Using a shorter wait for password field, assuming it might appear after username interaction or be readily available.
-            password_field = WebDriverWait(driver, 5).until(EC.presence_of_element_located(password_locator))
-            internal_logs.append(f"perform_website_login: Found password field with locator: {password_locator}")
+            # Using the main 'wait' object which uses the function's 'timeout' parameter.
+            password_field = wait.until(EC.presence_of_element_located(password_locator))
+            internal_logs.append(f"perform_website_login: Found password field in popup with locator: {password_locator}")
         except TimeoutException:
-            internal_logs.append(f"perform_website_login: Timeout waiting for password field with locator: {password_locator}")
-            raise NoSuchElementException(f"Could not find password field with locator {password_locator} within timeout.")
+            internal_logs.append(f"perform_website_login: Timeout waiting for password field in popup with locator: {password_locator}")
+            raise NoSuchElementException(f"Could not find password field in popup with locator {password_locator} within timeout {timeout}s.")
 
-        internal_logs.append("perform_website_login: Sending password...") # Not logging actual password for security
+        internal_logs.append("perform_website_login: Sending password to popup field...")
         password_field.send_keys(password)
-        internal_logs.append("perform_website_login: Password sent.")
+        time.sleep(0.5) # Pause after sending keys
+        internal_logs.append("perform_website_login: Password sent to popup field.")
 
-        # Find and click login button
+        # Find and click login button in the popup
         login_button_locator = (By.CSS_SELECTOR, "button.xoo-el-login-btn")
-        internal_logs.append(f"perform_website_login: Attempting to find login button with locator: {login_button_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to find login button in popup with locator: {login_button_locator}")
         try:
             login_button = wait.until(EC.element_to_be_clickable(login_button_locator))
-            internal_logs.append(f"perform_website_login: Found login button with locator: {login_button_locator}")
+            internal_logs.append(f"perform_website_login: Found login button in popup with locator: {login_button_locator}")
         except TimeoutException:
-            internal_logs.append(f"perform_website_login: Timeout waiting for login button with locator: {login_button_locator} or it was not clickable.")
-            raise NoSuchElementException(f"Could not find login button with locator {login_button_locator} or it was not clickable within timeout.")
+            internal_logs.append(f"perform_website_login: Timeout waiting for login button in popup with locator: {login_button_locator} or it was not clickable.")
+            raise NoSuchElementException(f"Could not find login button in popup with locator {login_button_locator} or it was not clickable within timeout {timeout}s.")
         
-        internal_logs.append(f"perform_website_login: Attempting to click login button with locator {login_button_locator}")
+        internal_logs.append(f"perform_website_login: Attempting to click login button in popup with locator {login_button_locator}")
         login_button.click()
-        internal_logs.append("perform_website_login: Login button click action performed.")
+        # time.sleep(3) is already part of the post-login check, so it's effectively after the click.
+        internal_logs.append("perform_website_login: Login button in popup click action performed.")
 
         # Post-login check (placeholder - very basic)
         # A more robust check would be to wait for a specific element that appears only after login,
