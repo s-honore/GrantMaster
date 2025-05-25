@@ -72,37 +72,94 @@ class GraphOrchestrator:
 
     def handle_error_node(self, state: GrantMasterState) -> dict:
         """
-        Handles errors recorded in the state.
-        Logs the error and clears it from the state.
+        Handles errors recorded in the state by logging them.
+        The error_message remains in the state for potential inspection
+        before the graph typically transitions to END.
         """
-        error_message = state.get('error_message', 'No specific error message found in state.')
+        error_message_from_state = state.get('error_message', 'No specific error message provided in state.')
         current_logs = list(state.get('log_messages', []))
         
-        error_log_message = f"GraphOrchestrator: Error handled - {error_message}"
-        print(error_log_message)
-        current_logs.append(error_log_message)
+        # Log the error prominently (e.g., to console)
+        print(f"GraphOrchestrator: ERROR ENCOUNTERED - {error_message_from_state}")
         
-        # Return state updates
+        # Add the error to the log_messages list in the state
+        log_entry = f"ERROR ENCOUNTERED IN GRAPH: {error_message_from_state}"
+        current_logs.append(log_entry)
+        
+        # Return updates: only log_messages is modified.
+        # error_message from input state is implicitly passed through if not set here.
         return {
-            "log_messages": current_logs,
-            "error_message": None # Clear the error message after handling
+            "log_messages": current_logs
+            # By not returning 'error_message': None, we keep the original error in the state.
         }
 
     def save_section_node(self, state: GrantMasterState) -> dict:
         """
-        Placeholder node for saving a drafted section.
-        (Actual implementation will be defined based on a future prompt)
+        Saves the current draft section to the database using DataManager.
+        Retrieves necessary details from the state.
         """
-        section_name = state.get('current_section_name', 'Unknown Section')
         current_logs = list(state.get('log_messages', []))
+        node_error_message = None
+
+        grant_opp_id = state.get("current_grant_opportunity_id")
+        section_name = state.get("current_section_name")
+        draft_content = state.get("current_draft_content")
+        iteration_count = state.get("iteration_count", 1) # Default to 1 if not set
+        editor_feedback = state.get("editor_feedback", "") # Default to empty string
+
+        # Prerequisite checks
+        if not grant_opp_id:
+            node_error_message = "Save section failed: Missing current_grant_opportunity_id in state."
+        elif not section_name:
+            node_error_message = "Save section failed: Missing current_section_name in state."
+        elif not draft_content: # Assuming empty draft should not be saved
+            node_error_message = "Save section failed: Missing or empty current_draft_content in state."
+
+        if node_error_message:
+            print(f"GraphOrchestrator.save_section_node: {node_error_message}")
+            current_logs.append(node_error_message)
+            return {
+                "log_messages": current_logs,
+                "error_message": node_error_message
+            }
+
+        try:
+            print(f"GraphOrchestrator.save_section_node: Attempting to save section '{section_name}' for grant ID {grant_opp_id}, version {iteration_count}.")
+            db_id = self.data_manager.save_section_draft(
+                grant_opportunity_id=grant_opp_id,
+                section_name=section_name,
+                draft_content=draft_content,
+                version=iteration_count,
+                feedback=editor_feedback
+            )
+
+            if db_id is not None:
+                success_log = f"Section '{section_name}' (Version {iteration_count}) saved to database with ID: {db_id} for grant ID {grant_opp_id}."
+                print(success_log)
+                current_logs.append(success_log)
+                # Optionally, clear draft/feedback from state after successful save:
+                # return {
+                #     "log_messages": current_logs,
+                #     "error_message": None,
+                #     "current_draft_content": "", # Or None
+                #     "editor_feedback": ""       # Or None
+                # }
+            else:
+                node_error_message = f"Failed to save section '{section_name}' (Version {iteration_count}) to database for grant ID {grant_opp_id}. DataManager returned None."
+                print(f"GraphOrchestrator.save_section_node: {node_error_message}")
+                current_logs.append(node_error_message)
         
-        save_log_message = f"GraphOrchestrator: save_section_node called for section '{section_name}'. Not yet implemented."
-        print(save_log_message)
-        current_logs.append(save_log_message)
-        
-        # No actual state changes related to saving yet
+        except Exception as e:
+            node_error_message = f"Unexpected error in save_section_node for section '{section_name}': {str(e)}"
+            print(f"GraphOrchestrator.save_section_node: {node_error_message}")
+            current_logs.append(node_error_message)
+            # import traceback # For more detailed debugging if needed
+            # current_logs.append(traceback.format_exc())
+
+
         return {
-            "log_messages": current_logs
+            "log_messages": current_logs,
+            "error_message": node_error_message # Will be None if successful
         }
 
     # (Future methods like compile_graph, run_graph will be added here)
