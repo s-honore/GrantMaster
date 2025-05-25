@@ -53,9 +53,25 @@ def perform_website_login(url, username, password, timeout=10):
         chrome_options.add_argument("--proxy-bypass-list=*")
         chrome_options.add_argument("--start-maximized")
         chrome_options.add_argument("--log-level=1") # You can adjust log level if needed
+        # chrome_options.add_argument("--verbose") # May or may not be supported directly
+        # chrome_options.add_argument("--enable-logging=stderr --v=1") # More detailed chrome logging
 
-        driver = webdriver.Chrome(service=ChromeService(ChromeDriverManager().install()), options=chrome_options)
-        print(f"WebDriver initialized with headless options. Navigating to login page: {url}")
+        # Forcing the browser binary location
+        expected_browser_path = "/usr/bin/chromium-browser"
+        print(f"Attempting to set browser binary location to: {expected_browser_path}")
+        chrome_options.binary_location = expected_browser_path
+
+        chromedriver_path = ChromeDriverManager().install()
+        print(f"ChromeDriverManager().install() returned chromedriver path: {chromedriver_path}")
+
+        # Enable verbose logging for chromedriver service
+        service_args = ['--verbose', '--log-path=/tmp/chromedriver.log']
+        print(f"Initializing ChromeService with chromedriver path: {chromedriver_path} and service_args: {service_args}")
+        service = ChromeService(executable_path=chromedriver_path, service_args=service_args)
+        
+        print("Attempting to start webdriver.Chrome with specified service and options...")
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        print(f"WebDriver initialized. Navigating to login page: {url}")
         driver.get(url)
         wait = WebDriverWait(driver, timeout)
 
