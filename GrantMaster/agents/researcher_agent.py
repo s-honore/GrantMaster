@@ -57,7 +57,7 @@ def perform_website_login(url, username, password, timeout=10):
         # chrome_options.add_argument("--enable-logging=stderr --v=1") # More detailed chrome logging
 
         # Forcing the browser binary location
-        expected_browser_path = "/usr/bin/chromium-browser"
+        expected_browser_path = "/usr/bin/chromium"
         print(f"Attempting to set browser binary location to: {expected_browser_path}")
         chrome_options.binary_location = expected_browser_path
 
