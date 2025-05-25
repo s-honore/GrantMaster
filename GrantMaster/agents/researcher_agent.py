@@ -4,7 +4,6 @@ import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -61,13 +60,13 @@ def perform_website_login(url, username, password, timeout=10):
         print(f"Attempting to set browser binary location to: {expected_browser_path}")
         chrome_options.binary_location = expected_browser_path
 
-        chromedriver_path = ChromeDriverManager().install()
-        print(f"ChromeDriverManager().install() returned chromedriver path: {chromedriver_path}")
-
-        # Enable verbose logging for chromedriver service
+        # Use system-installed chromedriver
+        system_chromedriver_path = '/usr/bin/chromedriver'
+        
+        # Reinstate verbose logging for chromedriver service
         service_args = ['--verbose', '--log-path=/tmp/chromedriver.log']
-        print(f"Initializing ChromeService with chromedriver path: {chromedriver_path} and service_args: {service_args}")
-        service = ChromeService(executable_path=chromedriver_path, service_args=service_args)
+        print(f"Initializing ChromeService with system chromedriver path: {system_chromedriver_path} and service_args: {service_args}")
+        service = ChromeService(executable_path=system_chromedriver_path, service_args=service_args)
         
         print("Attempting to start webdriver.Chrome with specified service and options...")
         driver = webdriver.Chrome(service=service, options=chrome_options)
