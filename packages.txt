@@ -1,3 +1,8 @@
+# For Chrome/Chromium browser itself
+chromium-browser
+chromium-chromedriver
+
+# Existing libraries (keep these, they are still important)
 libglib2.0-0
 libnss3
 libgconf-2-4
